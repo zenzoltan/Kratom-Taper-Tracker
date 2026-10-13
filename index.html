@@ -165,10 +165,7 @@
     </div>
 
     <script>
-      // ==========================================
-      // IDE MÁSOLD BE A SAJÁT APPS SCRIPT LINKEDET:
-      // ==========================================
-      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbweFIVD1f3lKHEvike_siqmQINk3fqPUuV9Kp3T5AWUiyhRJQj4KOkGjBFTIvcTadE/exec";
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby515bCBeXtqZBDv1LTPCcHfXeIH29KFgwSD3PAdslyYpGkTDOL3o5KPprMS4K5jW8/exec";
 
       var isSaving = false;
 
@@ -217,11 +214,8 @@
         setStatus('💾 Mentés...', 'status-saving');
 
         try {
-          // Gyors háttérküldés (POST)
-          const response = await fetch(APPS_SCRIPT_URL, {
-            method: 'POST',
-            body: JSON.stringify({ sheetName: sheetName, dateStr: dateStr, time: time, amount: val })
-          });
+          const url = `${APPS_SCRIPT_URL}?action=saveDose&sheetName=${encodeURIComponent(sheetName)}&dateStr=${encodeURIComponent(dateStr)}&time=${encodeURIComponent(time)}&amount=${encodeURIComponent(val)}`;
+          const response = await fetch(url, { redirect: 'follow' });
           const res = await response.json();
 
           if (res.success) {
@@ -278,7 +272,8 @@
         dateLabel.innerText = dateStr;
 
         try {
-          const res = await fetch(`${APPS_SCRIPT_URL}?action=getStats&sheetName=${sheetName}&dateStr=${dateStr}`);
+          const url = `${APPS_SCRIPT_URL}?action=getStats&sheetName=${encodeURIComponent(sheetName)}&dateStr=${encodeURIComponent(dateStr)}`;
+          const res = await fetch(url, { redirect: 'follow' });
           const data = await res.json();
           if (!data || !data.found) {
             statsContent.innerHTML = '<div style="color: #777; font-size: 12px; text-align: center; padding: 10px;">Nincs még bejegyzés erre a napra.</div>';
