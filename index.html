@@ -169,29 +169,6 @@
 
       var isSaving = false;
 
-      // Golyóálló JSONP hívás (megkerüli a böngészős CORS/fetch blokkolást)
-      function callApi(params, onSuccess, onError) {
-        const callbackName = 'jsonp_cb_' + Math.round(100000 * Math.random());
-        window[callbackName] = function(data) {
-          delete window[callbackName];
-          if (script && script.parentNode) script.parentNode.removeChild(script);
-          onSuccess(data);
-        };
-
-        const queryParams = Object.keys(params)
-          .map(k => encodeURIComponent(k) + '=' + encodeURIComponent(params[k]))
-          .join('&');
-
-        const script = document.createElement('script');
-        script.src = `${APPS_SCRIPT_URL}?${queryParams}&callback=${callbackName}`;
-        script.onerror = function() {
-          delete window[callbackName];
-          if (script && script.parentNode) script.parentNode.removeChild(script);
-          onError(new Error("Nem sikerült elérni a szervert (ellenőrizd a kapcsolatot)"));
-        };
-        document.body.appendChild(script);
-      }
-
       window.onload = function() {
         resetDateTime();
         loadStats();
@@ -220,7 +197,7 @@
         }
       }
 
-      function autoSubmit() {
+      async function autoSubmit() {
         if (isSaving) return;
 
         var amountInput = document.getElementById('amount');
@@ -236,13 +213,11 @@
         amountInput.disabled = true;
         setStatus('💾 Mentés...', 'status-saving');
 
-        callApi({
-          action: 'saveDose',
-          sheetName: sheetName,
-          dateStr: dateStr,
-          time: time,
-          amount: val
-        }, function(res) {
+        try {
+          const url = `${APPS_SCRIPT_URL}?action=saveDose&sheetName=${encodeURIComponent(sheetName)}&dateStr=${encodeURIComponent(dateStr)}&time=${encodeURIComponent(time)}&amount=${encodeURIComponent(val)}`;
+          const response = await fetch(url, { redirect: 'follow' });
+          const res = await response.json();
+
           if (res.success) {
             setStatus('✅ ' + val + ' g rögzítve!', 'status-success');
             amountInput.disabled = false;
@@ -258,17 +233,14 @@
 
             setTimeout(() => { if (!isSaving) setStatus('', 'status-idle'); }, 2500);
           } else {
-            setStatus('❌ Hiba: ' + (res.error || 'Ismeretlen hiba'), 'status-error');
-            amountInput.disabled = false;
-            isSaving = false;
-            focusAmount();
+            throw new Error(res.error || "Ismeretlen hiba");
           }
-        }, function(err) {
+        } catch (err) {
           setStatus('❌ Hiba: ' + err.message, 'status-error');
           amountInput.disabled = false;
           isSaving = false;
           focusAmount();
-        });
+        }
       }
 
       function setStatus(text, className) {
@@ -291,7 +263,7 @@
         `;
       }
 
-      function loadStats() {
+      async function loadStats() {
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
         var statsContent = document.getElementById('statsContent');
@@ -299,19 +271,18 @@
 
         dateLabel.innerText = dateStr;
 
-        callApi({
-          action: 'getStats',
-          sheetName: sheetName,
-          dateStr: dateStr
-        }, function(data) {
+        try {
+          const url = `${APPS_SCRIPT_URL}?action=getStats&sheetName=${encodeURIComponent(sheetName)}&dateStr=${encodeURIComponent(dateStr)}`;
+          const res = await fetch(url, { redirect: 'follow' });
+          const data = await res.json();
           if (!data || !data.found) {
             statsContent.innerHTML = '<div style="color: #777; font-size: 12px; text-align: center; padding: 10px;">Nincs még bejegyzés erre a napra.</div>';
             return;
           }
           renderStats(data);
-        }, function(err) {
-          statsContent.innerHTML = '<div style="color: #ef5350; font-size: 12px; padding: 8px;">Hiba a betöltéskor: ' + err.message + '</div>';
-        });
+        } catch (err) {
+          statsContent.innerHTML = '<div style="color: #ef5350; font-size: 12px; padding: 8px;">Hiba: ' + err.message + '</div>';
+        }
       }
     </script>
   </body>
