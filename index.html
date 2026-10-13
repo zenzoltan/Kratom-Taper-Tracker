@@ -6,10 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#121212">
     <style>
-      * {
-        box-sizing: border-box;
-        -webkit-tap-highlight-color: transparent;
-      }
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         padding: 16px;
@@ -21,14 +18,8 @@
         margin-right: auto;
         line-height: 1.4;
       }
-      .top-row {
-        display: flex;
-        gap: 8px;
-        margin-bottom: 12px;
-      }
-      .form-group {
-        flex: 1;
-      }
+      .top-row { display: flex; gap: 8px; margin-bottom: 12px; }
+      .form-group { flex: 1; }
       label {
         display: block;
         margin-bottom: 4px;
@@ -47,9 +38,6 @@
         border-radius: 8px;
         font-size: 14px;
         box-sizing: border-box;
-      }
-      select {
-        cursor: pointer;
       }
       .dose-container {
         margin: 12px 0 6px 0;
@@ -82,11 +70,7 @@
         border-color: #81c784;
         box-shadow: 0 0 12px rgba(129, 199, 132, 0.25);
       }
-      .hint {
-        font-size: 11px;
-        color: #666;
-        margin-top: 6px;
-      }
+      .hint { font-size: 11px; color: #666; margin-top: 6px; }
       #statusMsg {
         font-size: 13px;
         font-weight: bold;
@@ -114,15 +98,8 @@
         border-bottom: 1px solid #262626;
         padding-bottom: 6px;
       }
-      .stats-header-title {
-        font-size: 13px;
-        font-weight: bold;
-        color: #81c784;
-      }
-      .stats-header-date {
-        font-size: 11px;
-        color: #777;
-      }
+      .stats-header-title { font-size: 13px; font-weight: bold; color: #81c784; }
+      .stats-header-date { font-size: 11px; color: #777; }
       .stat-row {
         display: flex;
         justify-content: space-between;
@@ -131,28 +108,14 @@
         border-bottom: 1px solid #222;
         font-size: 13px;
       }
-      .stat-row:last-child {
-        border-bottom: none;
-      }
-      .stat-label {
-        color: #888;
-      }
-      .stat-value {
-        font-weight: 600;
-        color: #fff;
-      }
-      .loading {
-        color: #666;
-        font-style: italic;
-        font-size: 12px;
-        text-align: center;
-        padding: 10px 0;
-      }
+      .stat-row:last-child { border-bottom: none; }
+      .stat-label { color: #888; }
+      .stat-value { font-weight: 600; color: #fff; }
+      .loading { color: #666; font-style: italic; font-size: 12px; text-align: center; padding: 10px 0; }
     </style>
   </head>
   <body>
 
-    <!-- Profil, Dátum és Időpont -->
     <div class="top-row">
       <div class="form-group" style="max-width: 90px;">
         <label for="sheetName">Profil</label>
@@ -171,7 +134,6 @@
       </div>
     </div>
 
-    <!-- Adag beírása (Enter menti) -->
     <div class="dose-container">
       <label for="amount">🌿 ADAG (GRAMM)</label>
       <div>
@@ -192,7 +154,6 @@
 
     <div id="statusMsg" class="status-idle">Kész</div>
 
-    <!-- Napi statisztikák / átlagok kártya -->
     <div class="stats-card">
       <div class="stats-header">
         <span class="stats-header-title">📊 Napi Összesítő</span>
@@ -207,10 +168,12 @@
       const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby515bCBeXtqZBDv1LTPCcHfXeIH29KFgwSD3PAdslyYpGkTDOL3o5KPprMS4K5jW8/exec";
       var isSaving = false;
 
-      // JSONP API kommunikáció a működő Code.gs-hez
       function callApi(params, onSuccess, onError) {
-        const callbackName = 'jsonp_cb_' + Math.round(100000 * Math.random());
+        const callbackName = 'jsonp_cb_' + Math.round(1000000 * Math.random());
+        let finished = false;
+
         window[callbackName] = function(data) {
+          finished = true;
           delete window[callbackName];
           if (script && script.parentNode) script.parentNode.removeChild(script);
           onSuccess(data);
@@ -221,17 +184,30 @@
           .join('&');
 
         const script = document.createElement('script');
-        script.src = `${APPS_SCRIPT_URL}?${queryParams}&callback=${callbackName}`;
+        script.src = `${APPS_SCRIPT_URL}?${queryParams}&callback=${callbackName}&_ts=${Date.now()}`;
+        
         script.onerror = function() {
+          if (finished) return;
+          finished = true;
           delete window[callbackName];
           if (script && script.parentNode) script.parentNode.removeChild(script);
-          if (onError) onError(new Error("Nem sikerült elérni a szervert"));
+          onError(new Error("A hálózati kapcsolat megszakadt vagy a Google letiltotta a kérést."));
         };
+
+        // 20 mp türelmi idő a mobilhálózatokhoz
+        setTimeout(function() {
+          if (!finished) {
+            finished = true;
+            delete window[callbackName];
+            if (script && script.parentNode) script.parentNode.removeChild(script);
+            onError(new Error("Időtúllépés (túl lassan válaszolt a szerver)"));
+          }
+        }, 20000);
+
         document.body.appendChild(script);
       }
 
       window.onload = function() {
-        // 1. Készülékenként elmentett profil betöltése (ha még nincs elmentve semmi, alapból Kori)
         var savedProfile = localStorage.getItem('taper_active_profile') || 'Kori';
         document.getElementById('sheetName').value = savedProfile;
 
@@ -240,7 +216,6 @@
         focusAmount();
       };
 
-      // Profilváltáskor azonnal elmentjük erre a telefonra
       function onProfileChange() {
         var profile = document.getElementById('sheetName').value;
         localStorage.setItem('taper_active_profile', profile);
@@ -295,7 +270,7 @@
           time: time,
           amount: val
         }, function(res) {
-          if (res.success) {
+          if (res && res.success) {
             setStatus('✅ ' + val + ' g rögzítve!', 'status-success');
             amountInput.disabled = false;
             amountInput.value = '';
@@ -310,13 +285,13 @@
 
             setTimeout(() => { if (!isSaving) setStatus('', 'status-idle'); }, 2500);
           } else {
-            setStatus('❌ Hiba: ' + (res.error || 'Ismeretlen hiba'), 'status-error');
+            setStatus('❌ Hiba: ' + (res && res.error ? res.error : 'Ismeretlen hiba'), 'status-error');
             amountInput.disabled = false;
             isSaving = false;
             focusAmount();
           }
         }, function(err) {
-          setStatus('❌ Hiba: ' + err.message, 'status-error');
+          setStatus('❌ ' + err.message, 'status-error');
           amountInput.disabled = false;
           isSaving = false;
           focusAmount();
@@ -350,6 +325,7 @@
         var dateLabel = document.getElementById('statsDateLabel');
 
         dateLabel.innerText = dateStr;
+        statsContent.innerHTML = '<div class="loading">Betöltés...</div>';
 
         callApi({
           action: 'getStats',
@@ -362,7 +338,7 @@
           }
           renderStats(data);
         }, function(err) {
-          statsContent.innerHTML = '<div style="color: #ef5350; font-size: 12px; padding: 8px;">Hiba a betöltéskor: ' + err.message + '</div>';
+          statsContent.innerHTML = '<div style="color: #ef5350; font-size: 12px; padding: 8px;">Hiba: ' + err.message + '</div>';
         });
       }
     </script>
