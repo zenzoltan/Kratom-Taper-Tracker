@@ -113,13 +113,13 @@
       .stat-value { font-weight: 600; color: #fff; }
       .loading { color: #666; font-style: italic; font-size: 12px; text-align: center; padding: 10px 0; }
 
-      /* PIN KÓD PÁRBESZÉDABLAK */
+      /* PIN MODAL */
       #pinModal {
         display: none;
         position: fixed;
         top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(0, 0, 0, 0.88);
-        backdrop-filter: blur(5px);
+        background: rgba(0, 0, 0, 0.9);
+        backdrop-filter: blur(6px);
         z-index: 9999;
         align-items: center;
         justify-content: center;
@@ -133,10 +133,10 @@
         width: 100%;
         max-width: 300px;
         text-align: center;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+        box-shadow: 0 8px 30px rgba(0,0,0,0.8);
       }
       .pin-box h4 {
-        margin: 0 0 10px 0;
+        margin: 0 0 8px 0;
         color: #81c784;
         font-size: 17px;
       }
@@ -190,7 +190,7 @@
   </head>
   <body>
 
-    <!-- Felső vezérlősáv -->
+    <!-- Felső sáv -->
     <div class="top-row">
       <div class="form-group" style="max-width: 85px;">
         <label for="sheetName">Profil</label>
@@ -242,14 +242,14 @@
     </div>
 
     <div class="footer-lock">
-      🔒 PIN védelem aktív • <a onclick="changePin()">PIN módosítása</a>
+      🔒 PIN védelem • <a onclick="changePin()">PIN módosítása</a>
     </div>
 
-    <!-- PIN Bekérő Ablak -->
+    <!-- PIN Belépő Modal -->
     <div id="pinModal">
       <div class="pin-box">
         <h4>🔒 Biztonsági Belépés</h4>
-        <p>Add meg a titkos PIN kódodat az adatok eléréséhez:</p>
+        <p>Add meg a titkos PIN kódodat az eléréshez:</p>
         <input type="password" id="modalPinInput" class="pin-input" inputmode="numeric" maxlength="8" placeholder="••••" onkeydown="if(event.key==='Enter') savePinFromModal()">
         <button class="pin-btn" onclick="savePinFromModal()">Belépés</button>
         <div id="modalPinError" class="pin-error">Hibás PIN kód!</div>
@@ -269,11 +269,7 @@
         var pinInp = document.getElementById('modalPinInput');
         pinInp.value = '';
         pinInp.focus();
-        if (isError) {
-          document.getElementById('modalPinError').style.display = 'block';
-        } else {
-          document.getElementById('modalPinError').style.display = 'none';
-        }
+        document.getElementById('modalPinError').style.display = isError ? 'block' : 'none';
       }
 
       function savePinFromModal() {
@@ -289,6 +285,7 @@
         showPinModal(false);
       }
 
+      // Golyóálló JSONP API hívó PIN küldéssel
       function callApi(params, onSuccess, onError) {
         const pin = getSavedPin();
         if (!pin) {
@@ -303,6 +300,7 @@
           delete window[callbackName];
           if (script && script.parentNode) script.parentNode.removeChild(script);
 
+          // Ha a szerver jelezte, hogy nem jó a PIN
           if (data && data.authError) {
             localStorage.removeItem('taper_user_pin');
             showPinModal(true);
@@ -338,7 +336,7 @@
 
       function focusAmount() {
         var input = document.getElementById('amount');
-        input.focus();
+        if (input) input.focus();
       }
 
       function resetDateTime() {
