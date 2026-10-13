@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="hu">
+  <head>
+    <meta charset="utf-8">
+    <title>🌿 Kratom Taper Tracker</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#121212">
+    <style>
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        padding: 16px;
+        background: #121212;
+        color: #e0e0e0;
+        margin: 0;
+        max-width: 480px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .top-row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .form-group { flex: 1; }
+      label {
+        display: block;
+        margin-bottom: 4px;
+        color: #888;
+        font-size: 11px;
+        text-transform: uppercase;
+        font-weight: 600;
+      }
+      input, select {
+        width: 100%;
+        padding: 9px;
+        background: #1e1e1e;
+        color: #fff;
+        border: 1px solid #333;
+        border-radius: 8px;
+        font-size: 14px;
+      }
+      .dose-container {
+        margin: 12px 0 6px 0;
+        background: #181818;
+        border: 1px solid #282828;
+        border-radius: 12px;
+        padding: 14px;
+        text-align: center;
+      }
+      .dose-container label {
+        font-size: 13px;
+        color: #81c784;
+        margin-bottom: 8px;
+      }
+      .dose-input {
+        width: 100%;
+        max-width: 170px;
+        padding: 12px;
+        font-size: 30px;
+        font-weight: bold;
+        text-align: center;
+        background: #0d0d0d;
+        color: #4caf50;
+        border: 2px solid #2e7d32;
+        border-radius: 10px;
+        outline: none;
+      }
+      .dose-input:focus {
+        border-color: #81c784;
+        box-shadow: 0 0 12px rgba(129, 199, 132, 0.25);
+      }
+      .hint { font-size: 11px; color: #666; margin-top: 6px; }
+      #statusMsg {
+        font-size: 13px;
+        font-weight: bold;
+        text-align: center;
+        min-height: 22px;
+        margin: 6px 0;
+      }
+      .status-idle { color: transparent; }
+      .status-saving { color: #ffb74d; }
+      .status-success { color: #81c784; }
+      .status-error { color: #ef5350; }
+
+      .stats-card {
+        margin-top: 14px;
+        background: #181818;
+        border: 1px solid #282828;
+        border-radius: 12px;
+        padding: 14px;
+      }
+      .stats-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+        border-bottom: 1px solid #262626;
+        padding-bottom: 6px;
+      }
+      .stats-header-title { font-size: 13px; font-weight: bold; color: #81c784; }
+      .stats-header-date { font-size: 11px; color: #777; }
+      .stat-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 0;
+        border-bottom: 1px solid #222;
+        font-size: 13px;
+      }
+      .stat-row:last-child { border-bottom: none; }
+      .stat-label { color: #888; }
+      .stat-value { font-weight: 600; color: #fff; }
+      .loading { color: #666; font-style: italic; font-size: 12px; text-align: center; padding: 10px 0; }
+    </style>
+  </head>
+  <body>
+
+    <div class="top-row">
+      <div class="form-group" style="max-width: 85px;">
+        <label for="sheetName">Profil</label>
+        <select id="sheetName" onchange="loadStats()">
+          <option value="Zoli">Zoli</option>
+          <option value="Kori">Kori</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="doseDate">Dátum</label>
+        <input type="date" id="doseDate" onchange="loadStats()" required>
+      </div>
+      <div class="form-group" style="max-width: 95px;">
+        <label for="time">Időpont</label>
+        <input type="time" id="time" required>
+      </div>
+    </div>
+
+    <div class="dose-container">
+      <label for="amount">🌿 ADAG (GRAMM)</label>
+      <div>
+        <input 
+          type="number" 
+          id="amount" 
+          class="dose-input" 
+          step="0.01" 
+          placeholder="0.00" 
+          autofocus 
+          inputmode="decimal"
+          onkeydown="handleKey(event)"
+          onchange="autoSubmit()"
+        >
+      </div>
+      <div class="hint">Írd be és nyomj Entert a mentéshez!</div>
+    </div>
+
+    <div id="statusMsg" class="status-idle">Kész</div>
+
+    <div class="stats-card">
+      <div class="stats-header">
+        <span class="stats-header-title">📊 Napi Összesítő</span>
+        <span id="statsDateLabel" class="stats-header-date"></span>
+      </div>
+      <div id="statsContent">
+        <div class="loading">Betöltés...</div>
+      </div>
+    </div>
+
+    <script>
+      // ==========================================
+      // IDE MÁSOLD BE A SAJÁT APPS SCRIPT LINKEDET:
+      // ==========================================
+      const APPS_SCRIPT_URL = https://script.google.com/macros/s/AKfycby515bCBeXtqZBDv1LTPCcHfXeIH29KFgwSD3PAdslyYpGkTDOL3o5KPprMS4K5jW8/exec;
+
+      var isSaving = false;
+
+      window.onload = function() {
+        resetDateTime();
+        loadStats();
+        focusAmount();
+      };
+
+      function focusAmount() {
+        var input = document.getElementById('amount');
+        input.focus();
+      }
+
+      function resetDateTime() {
+        var today = new Date();
+        var yyyy = today.getFullYear();
+        var mm = String(today.getMonth() + 1).padStart(2, '0');
+        var dd = String(today.getDate()).padStart(2, '0');
+        
+        document.getElementById('doseDate').value = yyyy + '-' + mm + '-' + dd;
+        document.getElementById('time').value = today.toTimeString().substring(0, 5);
+      }
+
+      function handleKey(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          autoSubmit();
+        }
+      }
+
+      async function autoSubmit() {
+        if (isSaving) return;
+
+        var amountInput = document.getElementById('amount');
+        var val = amountInput.value.trim();
+
+        if (!val || parseFloat(val) <= 0) return;
+
+        var sheetName = document.getElementById('sheetName').value;
+        var dateStr = document.getElementById('doseDate').value;
+        var time = document.getElementById('time').value;
+
+        isSaving = true;
+        amountInput.disabled = true;
+        setStatus('💾 Mentés...', 'status-saving');
+
+        try {
+          // Gyors háttérküldés (POST)
+          const response = await fetch(APPS_SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify({ sheetName: sheetName, dateStr: dateStr, time: time, amount: val })
+          });
+          const res = await response.json();
+
+          if (res.success) {
+            setStatus('✅ ' + val + ' g rögzítve!', 'status-success');
+            amountInput.disabled = false;
+            amountInput.value = '';
+            isSaving = false;
+
+            document.getElementById('time').value = new Date().toTimeString().substring(0, 5);
+
+            if (res.stats && res.stats.found) {
+              renderStats(res.stats);
+            }
+            focusAmount();
+
+            setTimeout(() => { if (!isSaving) setStatus('', 'status-idle'); }, 2500);
+          } else {
+            throw new Error(res.error || "Ismeretlen hiba");
+          }
+        } catch (err) {
+          setStatus('❌ Hiba: ' + err.message, 'status-error');
+          amountInput.disabled = false;
+          isSaving = false;
+          focusAmount();
+        }
+      }
+
+      function setStatus(text, className) {
+        var el = document.getElementById('statusMsg');
+        el.innerText = text;
+        el.className = className;
+      }
+
+      function renderStats(data) {
+        var statsContent = document.getElementById('statsContent');
+        statsContent.innerHTML = `
+          <div class="stat-row"><span class="stat-label">⚖️ Napi összdózis:</span><span class="stat-value">${data.dailyTotal}</span></div>
+          <div class="stat-row"><span class="stat-label">🔢 Adagok száma:</span><span class="stat-value">${data.totalDoses}</span></div>
+          <div class="stat-row"><span class="stat-label">📊 Átlagos adag:</span><span class="stat-value">${data.avgDose}</span></div>
+          <div class="stat-row"><span class="stat-label">⏰ Ébredés ideje:</span><span class="stat-value">${data.wakeTime}</span></div>
+          <div class="stat-row"><span class="stat-label">⏳ Átlagos időköz:</span><span class="stat-value">${data.avgInterval}</span></div>
+          <div class="stat-row"><span class="stat-label">📊 Átlagos eltérés:</span><span class="stat-value">${data.avgDiff}</span></div>
+          <div class="stat-row"><span class="stat-label">⚡ Átlagos ráta:</span><span class="stat-value">${data.avgRate}</span></div>
+          <div class="stat-row"><span class="stat-label">🔝 Legmagasabb dózis:</span><span class="stat-value">${data.maxDose}</span></div>
+        `;
+      }
+
+      async function loadStats() {
+        var sheetName = document.getElementById('sheetName').value;
+        var dateStr = document.getElementById('doseDate').value;
+        var statsContent = document.getElementById('statsContent');
+        var dateLabel = document.getElementById('statsDateLabel');
+
+        dateLabel.innerText = dateStr;
+
+        try {
+          const res = await fetch(`${APPS_SCRIPT_URL}?action=getStats&sheetName=${sheetName}&dateStr=${dateStr}`);
+          const data = await res.json();
+          if (!data || !data.found) {
+            statsContent.innerHTML = '<div style="color: #777; font-size: 12px; text-align: center; padding: 10px;">Nincs még bejegyzés erre a napra.</div>';
+            return;
+          }
+          renderStats(data);
+        } catch (err) {
+          statsContent.innerHTML = '<div style="color: #ef5350; font-size: 12px; padding: 8px;">Hiba: ' + err.message + '</div>';
+        }
+      }
+    </script>
+  </body>
+</html>
