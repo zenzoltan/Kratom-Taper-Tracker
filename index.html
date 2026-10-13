@@ -165,9 +165,32 @@
     </div>
 
     <script>
-      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzhKEp3ovgXTnUajwzLKqKHHjm866OjoMbQ3thvt4Y26JUyk-NAElJZ6fdaXe_mu6w/exec";
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby515bCBeXtqZBDv1LTPCcHfXeIH29KFgwSD3PAdslyYpGkTDOL3o5KPprMS4K5jW8/exec";
 
       var isSaving = false;
+
+      // Golyóálló JSONP hívás (megkerüli a böngészős CORS/fetch blokkolást)
+      function callApi(params, onSuccess, onError) {
+        const callbackName = 'jsonp_cb_' + Math.round(100000 * Math.random());
+        window[callbackName] = function(data) {
+          delete window[callbackName];
+          if (script && script.parentNode) script.parentNode.removeChild(script);
+          onSuccess(data);
+        };
+
+        const queryParams = Object.keys(params)
+          .map(k => encodeURIComponent(k) + '=' + encodeURIComponent(params[k]))
+          .join('&');
+
+        const script = document.createElement('script');
+        script.src = `${APPS_SCRIPT_URL}?${queryParams}&callback=${callbackName}`;
+        script.onerror = function() {
+          delete window[callbackName];
+          if (script && script.parentNode) script.parentNode.removeChild(script);
+          onError(new Error("Nem sikerült elérni a szervert (ellenőrizd a kapcsolatot)"));
+        };
+        document.body.appendChild(script);
+      }
 
       window.onload = function() {
         resetDateTime();
@@ -197,7 +220,7 @@
         }
       }
 
-      async function autoSubmit() {
+      function autoSubmit() {
         if (isSaving) return;
 
         var amountInput = document.getElementById('amount');
@@ -213,11 +236,13 @@
         amountInput.disabled = true;
         setStatus('💾 Mentés...', 'status-saving');
 
-        try {
-          const url = `${APPS_SCRIPT_URL}?action=saveDose&sheetName=${encodeURIComponent(sheetName)}&dateStr=${encodeURIComponent(dateStr)}&time=${encodeURIComponent(time)}&amount=${encodeURIComponent(val)}`;
-          const response = await fetch(url, { redirect: 'follow' });
-          const res = await response.json();
-
+        callApi({
+          action: 'saveDose',
+          sheetName: sheetName,
+          dateStr: dateStr,
+          time: time,
+          amount: val
+        }, function(res) {
           if (res.success) {
             setStatus('✅ ' + val + ' g rögzítve!', 'status-success');
             amountInput.disabled = false;
@@ -233,14 +258,17 @@
 
             setTimeout(() => { if (!isSaving) setStatus('', 'status-idle'); }, 2500);
           } else {
-            throw new Error(res.error || "Ismeretlen hiba");
+            setStatus('❌ Hiba: ' + (res.error || 'Ismeretlen hiba'), 'status-error');
+            amountInput.disabled = false;
+            isSaving = false;
+            focusAmount();
           }
-        } catch (err) {
+        }, function(err) {
           setStatus('❌ Hiba: ' + err.message, 'status-error');
           amountInput.disabled = false;
           isSaving = false;
           focusAmount();
-        }
+        });
       }
 
       function setStatus(text, className) {
@@ -263,7 +291,7 @@
         `;
       }
 
-      async function loadStats() {
+      function loadStats() {
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
         var statsContent = document.getElementById('statsContent');
@@ -271,18 +299,19 @@
 
         dateLabel.innerText = dateStr;
 
-        try {
-          const url = `${APPS_SCRIPT_URL}?action=getStats&sheetName=${encodeURIComponent(sheetName)}&dateStr=${encodeURIComponent(dateStr)}`;
-          const res = await fetch(url, { redirect: 'follow' });
-          const data = await res.json();
+        callApi({
+          action: 'getStats',
+          sheetName: sheetName,
+          dateStr: dateStr
+        }, function(data) {
           if (!data || !data.found) {
             statsContent.innerHTML = '<div style="color: #777; font-size: 12px; text-align: center; padding: 10px;">Nincs még bejegyzés erre a napra.</div>';
             return;
           }
           renderStats(data);
-        } catch (err) {
-          statsContent.innerHTML = '<div style="color: #ef5350; font-size: 12px; padding: 8px;">Hiba: ' + err.message + '</div>';
-        }
+        }, function(err) {
+          statsContent.innerHTML = '<div style="color: #ef5350; font-size: 12px; padding: 8px;">Hiba a betöltéskor: ' + err.message + '</div>';
+        });
       }
     </script>
   </body>
