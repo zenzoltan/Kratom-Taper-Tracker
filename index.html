@@ -112,85 +112,10 @@
       .stat-label { color: #888; }
       .stat-value { font-weight: 600; color: #fff; }
       .loading { color: #666; font-style: italic; font-size: 12px; text-align: center; padding: 10px 0; }
-
-      /* PIN MODAL */
-      #pinModal {
-        display: none;
-        position: fixed;
-        top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(0, 0, 0, 0.9);
-        backdrop-filter: blur(6px);
-        z-index: 9999;
-        align-items: center;
-        justify-content: center;
-        padding: 20px;
-      }
-      .pin-box {
-        background: #1e1e1e;
-        border: 1px solid #333;
-        border-radius: 14px;
-        padding: 24px;
-        width: 100%;
-        max-width: 300px;
-        text-align: center;
-        box-shadow: 0 8px 30px rgba(0,0,0,0.8);
-      }
-      .pin-box h4 {
-        margin: 0 0 8px 0;
-        color: #81c784;
-        font-size: 17px;
-      }
-      .pin-box p {
-        font-size: 12px;
-        color: #999;
-        margin: 0 0 16px 0;
-      }
-      .pin-input {
-        width: 100%;
-        padding: 12px;
-        font-size: 24px;
-        text-align: center;
-        letter-spacing: 6px;
-        background: #121212;
-        color: #fff;
-        border: 2px solid #444;
-        border-radius: 8px;
-        outline: none;
-        margin-bottom: 14px;
-      }
-      .pin-btn {
-        width: 100%;
-        padding: 12px;
-        background: #2e7d32;
-        color: #fff;
-        border: none;
-        border-radius: 8px;
-        font-size: 15px;
-        font-weight: bold;
-        cursor: pointer;
-      }
-      .pin-error {
-        color: #ef5350;
-        font-size: 12px;
-        margin-top: 10px;
-        display: none;
-      }
-      .footer-lock {
-        text-align: center;
-        margin-top: 18px;
-        font-size: 11px;
-        color: #555;
-      }
-      .footer-lock a {
-        color: #81c784;
-        text-decoration: none;
-        cursor: pointer;
-      }
     </style>
   </head>
   <body>
 
-    <!-- Felső sáv -->
     <div class="top-row">
       <div class="form-group" style="max-width: 85px;">
         <label for="sheetName">Profil</label>
@@ -209,7 +134,6 @@
       </div>
     </div>
 
-    <!-- Adag rögzítése -->
     <div class="dose-container">
       <label for="amount">🌿 ADAG (GRAMM)</label>
       <div>
@@ -230,7 +154,6 @@
 
     <div id="statusMsg" class="status-idle">Kész</div>
 
-    <!-- Napi statisztikák -->
     <div class="stats-card">
       <div class="stats-header">
         <span class="stats-header-title">📊 Napi Összesítő</span>
@@ -241,72 +164,17 @@
       </div>
     </div>
 
-    <div class="footer-lock">
-      🔒 PIN védelem • <a onclick="changePin()">PIN módosítása</a>
-    </div>
-
-    <!-- PIN Belépő Modal -->
-    <div id="pinModal">
-      <div class="pin-box">
-        <h4>🔒 Biztonsági Belépés</h4>
-        <p>Add meg a titkos PIN kódodat az eléréshez:</p>
-        <input type="password" id="modalPinInput" class="pin-input" inputmode="numeric" maxlength="8" placeholder="••••" onkeydown="if(event.key==='Enter') savePinFromModal()">
-        <button class="pin-btn" onclick="savePinFromModal()">Belépés</button>
-        <div id="modalPinError" class="pin-error">Hibás PIN kód!</div>
-      </div>
-    </div>
-
     <script>
       const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby515bCBeXtqZBDv1LTPCcHfXeIH29KFgwSD3PAdslyYpGkTDOL3o5KPprMS4K5jW8/exec";
+
       var isSaving = false;
 
-      function getSavedPin() {
-        return localStorage.getItem('taper_user_pin') || '';
-      }
-
-      function showPinModal(isError) {
-        document.getElementById('pinModal').style.display = 'flex';
-        var pinInp = document.getElementById('modalPinInput');
-        pinInp.value = '';
-        pinInp.focus();
-        document.getElementById('modalPinError').style.display = isError ? 'block' : 'none';
-      }
-
-      function savePinFromModal() {
-        var enteredPin = document.getElementById('modalPinInput').value.trim();
-        if (!enteredPin) return;
-        localStorage.setItem('taper_user_pin', enteredPin);
-        document.getElementById('pinModal').style.display = 'none';
-        loadStats();
-      }
-
-      function changePin() {
-        localStorage.removeItem('taper_user_pin');
-        showPinModal(false);
-      }
-
-      // Golyóálló JSONP API hívó PIN küldéssel
+      // Golyóálló JSONP hívás (megkerüli a böngészős CORS/fetch blokkolást)
       function callApi(params, onSuccess, onError) {
-        const pin = getSavedPin();
-        if (!pin) {
-          showPinModal(false);
-          return;
-        }
-
-        params.pin = pin;
-
         const callbackName = 'jsonp_cb_' + Math.round(100000 * Math.random());
         window[callbackName] = function(data) {
           delete window[callbackName];
           if (script && script.parentNode) script.parentNode.removeChild(script);
-
-          // Ha a szerver jelezte, hogy nem jó a PIN
-          if (data && data.authError) {
-            localStorage.removeItem('taper_user_pin');
-            showPinModal(true);
-            return;
-          }
-
           onSuccess(data);
         };
 
@@ -319,24 +187,20 @@
         script.onerror = function() {
           delete window[callbackName];
           if (script && script.parentNode) script.parentNode.removeChild(script);
-          onError(new Error("Nem sikerült elérni a szervert"));
+          onError(new Error("Nem sikerült elérni a szervert (ellenőrizd a kapcsolatot)"));
         };
         document.body.appendChild(script);
       }
 
       window.onload = function() {
         resetDateTime();
-        if (!getSavedPin()) {
-          showPinModal(false);
-        } else {
-          loadStats();
-        }
+        loadStats();
         focusAmount();
       };
 
       function focusAmount() {
         var input = document.getElementById('amount');
-        if (input) input.focus();
+        input.focus();
       }
 
       function resetDateTime() {
