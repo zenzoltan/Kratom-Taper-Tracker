@@ -9,7 +9,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#121212">
 
-    <!-- Diszkrét, elegáns semleges ikon iPhone Home Screenhez (geometriai kör dizájn) -->
+    <!-- Diszkrét, elegáns semleges ikon iPhone Home Screenhez -->
     <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='120' fill='%23181818'/%3E%3Ccircle cx='256' cy='256' r='160' fill='none' stroke='%23333333' stroke-width='28'/%3E%3Ccircle cx='256' cy='256' r='160' fill='none' stroke='%234a90e2' stroke-width='28' stroke-dasharray='700' stroke-dashoffset='220' stroke-linecap='round'/%3E%3Ccircle cx='256' cy='256' r='36' fill='%23ffffff'/%3E%3C/svg%3E">
 
     <style>
@@ -60,13 +60,13 @@
         outline: none;
       }
 
-      /* Letisztult gramm beviteli mező (nincs zöld keret, nincs felirat) */
+      /* Letisztult gramm beviteli doboz feliratok nélkül */
       .dose-container {
         margin: 10px 0 6px 0;
         background: #181818;
         border: 1px solid #242424;
         border-radius: 12px;
-        padding: 16px 12px;
+        padding: 14px 12px;
         text-align: center;
       }
       .dose-input {
@@ -78,7 +78,7 @@
         text-align: center;
         background: #0f0f0f;
         color: #ffffff;
-        border: 1px solid #333333; /* Finom, semleges keret */
+        border: 1px solid #333333;
         border-radius: 8px;
         outline: none;
         transition: border-color 0.2s, box-shadow 0.2s;
@@ -86,11 +86,6 @@
       .dose-input:focus {
         border-color: #555555;
         box-shadow: 0 0 10px rgba(255, 255, 255, 0.08);
-      }
-      .hint {
-        font-size: 11px;
-        color: #555;
-        margin-top: 8px;
       }
 
       #statusMsg {
@@ -144,7 +139,7 @@
         color: #fff;
       }
       .highlight-value {
-        color: #64b5f6; /* Kellemes, letisztult kék a dinamikus időhöz */
+        color: #64b5f6;
         font-weight: 700;
       }
       .loading {
@@ -181,7 +176,7 @@
       </div>
     </div>
 
-    <!-- Adag beviteli mező (letisztult, semleges keret) -->
+    <!-- Adag beviteli mező -->
     <div class="dose-container">
       <input 
         type="number" 
@@ -194,23 +189,11 @@
         onkeydown="handleKey(event)"
         onchange="autoSubmit()"
       >
-      <div class="hint">Írd be és nyomj Entert a mentéshez</div>
     </div>
 
     <div id="statusMsg" class="status-idle">Kész</div>
 
-    <!-- 1. BLOKK: NAPI ÖSSZESÍTŐ ÉS ÁTLAGOK -->
-    <div class="card">
-      <div class="card-header">
-        <span>Napi adatok</span>
-        <span id="dateSubtitle" style="color: #555;"></span>
-      </div>
-      <div id="summaryStatsContent">
-        <div class="loading">Betöltés...</div>
-      </div>
-    </div>
-
-    <!-- 2. BLOKK: UTOLSÓ BEÍRT ADAG ADATAI -->
+    <!-- 1. BLOKK: UTOLSÓ BEÍRT ADAG ADATAI (FELÜL) -->
     <div class="card">
       <div class="card-header">
         <span>Legutóbbi tétel</span>
@@ -221,10 +204,21 @@
       </div>
     </div>
 
+    <!-- 2. BLOKK: NAPI ADATOK ÉS ÁTLAGOK (ALUL) -->
+    <div class="card">
+      <div class="card-header">
+        <span>Napi adatok</span>
+        <span id="dateSubtitle" style="color: #555;"></span>
+      </div>
+      <div id="summaryStatsContent">
+        <div class="loading">Betöltés...</div>
+      </div>
+    </div>
+
     <script>
-      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyaYaJqk3AIcubFhG5LSfpR1lGkPLzaBVsSOHunY84ilAEt2SqigHM0Wa5lYe5Rgpg/exec";
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby515bCBeXtqZBDv1LTPCcHfXeIH29KFgwSD3PAdslyYpGkTDOL3o5KPprMS4K5jW8/exec";
       var isSaving = false;
-      var lastRecordedTimeStr = null; // Tárolja az utolsó adag időpontját az élő számlálóhoz
+      var lastRecordedTimeStr = null;
       var liveTimerInterval = null;
 
       function callApi(params, onSuccess, onError) {
@@ -257,7 +251,6 @@
         loadStats();
         focusAmount();
 
-        // Percenként automatikusan újraszámolja az eltelt időt
         if (liveTimerInterval) clearInterval(liveTimerInterval);
         liveTimerInterval = setInterval(updateLiveElapsedTime, 30000);
       };
@@ -293,7 +286,6 @@
         }
       }
 
-      // Ébredési idő módosításának mentése
       function onWakeTimeChange() {
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
@@ -316,7 +308,6 @@
         });
       }
 
-      // Adat mentése
       function autoSubmit() {
         if (isSaving) return;
 
@@ -381,8 +372,8 @@
         var dateStr = document.getElementById('doseDate').value;
         document.getElementById('dateSubtitle').innerText = dateStr;
 
-        document.getElementById('summaryStatsContent').innerHTML = '<div class="loading">Betöltés...</div>';
         document.getElementById('lastDoseStatsContent').innerHTML = '<div class="loading">Betöltés...</div>';
+        document.getElementById('summaryStatsContent').innerHTML = '<div class="loading">Betöltés...</div>';
 
         callApi({
           action: 'getStats',
@@ -390,24 +381,46 @@
           dateStr: dateStr
         }, function(data) {
           if (!data || !data.found) {
-            document.getElementById('summaryStatsContent').innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">Nincs bejegyzés erre a napra.</div>';
             document.getElementById('lastDoseStatsContent').innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">Nincs korábbi adag.</div>';
+            document.getElementById('summaryStatsContent').innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">Nincs bejegyzés erre a napra.</div>';
             return;
           }
           renderAllStats(data);
         }, function(err) {
-          document.getElementById('summaryStatsContent').innerHTML = '<div style="color: #e57373; font-size: 12px; padding: 8px;">Hiba: ' + err.message + '</div>';
           document.getElementById('lastDoseStatsContent').innerHTML = '';
+          document.getElementById('summaryStatsContent').innerHTML = '<div style="color: #e57373; font-size: 12px; padding: 8px;">Hiba: ' + err.message + '</div>';
         });
       }
 
       function renderAllStats(data) {
-        // Ébredési idő beállítása a felső mezőbe
         if (data.wakeTime) {
           document.getElementById('wakeTime').value = data.wakeTime;
         }
 
-        // 1. Napi összegzés és átlagok
+        // 1. Legutóbbi adag adatai (FELÜL)
+        var last = data.lastDose;
+        var lastCard = document.getElementById('lastDoseStatsContent');
+        var timeLabel = document.getElementById('lastDoseTimeLabel');
+
+        if (!last) {
+          timeLabel.innerText = '';
+          lastCard.innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">Még nincs mai adag rögzítve.</div>';
+          lastRecordedTimeStr = null;
+        } else {
+          timeLabel.innerText = '#' + last.doseNumber + ' (' + last.time.substring(0, 5) + ' - ' + last.amount + 'g)';
+          lastRecordedTimeStr = last.time;
+
+          lastCard.innerHTML = `
+            <div class="stat-row"><span class="stat-label">Eltelt idő</span><span id="liveElapsedDisplay" class="stat-value highlight-value">Számítás...</span></div>
+            <div class="stat-row"><span class="stat-label">Ébren töltött idő</span><span class="stat-value">${last.awakeTime}</span></div>
+            <div class="stat-row"><span class="stat-label">Eltérés az előző adaghoz</span><span class="stat-value">${last.diff}</span></div>
+            <div class="stat-row"><span class="stat-label">Fogyasztási ráta</span><span class="stat-value">${last.rate}</span></div>
+          `;
+
+          updateLiveElapsedTime();
+        }
+
+        // 2. Napi összegzés és átlagok (ALUL)
         document.getElementById('summaryStatsContent').innerHTML = `
           <div class="stat-row"><span class="stat-label">Napi összdózis</span><span class="stat-value">${data.dailyTotal}</span></div>
           <div class="stat-row"><span class="stat-label">Átlagos adag</span><span class="stat-value">${data.avgDose}</span></div>
@@ -417,33 +430,8 @@
           <div class="stat-row"><span class="stat-label">Adagok száma</span><span class="stat-value">${data.totalDoses}</span></div>
           <div class="stat-row"><span class="stat-label">Átlagos időköz</span><span class="stat-value">${data.avgInterval}</span></div>
         `;
-
-        // 2. Legutóbbi adag adatai
-        var last = data.lastDose;
-        var lastCard = document.getElementById('lastDoseStatsContent');
-        var timeLabel = document.getElementById('lastDoseTimeLabel');
-
-        if (!last) {
-          timeLabel.innerText = '';
-          lastCard.innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">Még nincs mai adag rögzítve.</div>';
-          lastRecordedTimeStr = null;
-          return;
-        }
-
-        timeLabel.innerText = '#' + last.doseNumber + ' (' + last.time.substring(0, 5) + ' - ' + last.amount + 'g)';
-        lastRecordedTimeStr = last.time;
-
-        lastCard.innerHTML = `
-          <div class="stat-row"><span class="stat-label">Eltelt idő</span><span id="liveElapsedDisplay" class="stat-value highlight-value">Számítás...</span></div>
-          <div class="stat-row"><span class="stat-label">Ébren töltött idő</span><span class="stat-value">${last.awakeTime}</span></div>
-          <div class="stat-row"><span class="stat-label">Eltérés az előző adaghoz</span><span class="stat-value">${last.diff}</span></div>
-          <div class="stat-row"><span class="stat-label">Fogyasztási ráta</span><span class="stat-value">${last.rate}</span></div>
-        `;
-
-        updateLiveElapsedTime();
       }
 
-      // Dinamikus, élő Eltelt Idő kiszámítása (aktuális idő - utolsó adag ideje)
       function updateLiveElapsedTime() {
         var el = document.getElementById('liveElapsedDisplay');
         if (!el || !lastRecordedTimeStr) return;
@@ -460,7 +448,6 @@
 
         var diffMs = now.getTime() - lastDate.getTime();
         if (diffMs < 0) {
-          // Ha az adag még az éjjelre esett vagy előző napra
           diffMs += 24 * 60 * 60 * 1000;
         }
 
