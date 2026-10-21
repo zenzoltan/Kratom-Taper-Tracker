@@ -1,3 +1,10 @@
+Itt a frissített, letisztult **`index.html`** kód. A zöld pipa gombot teljesen eltávolítottam, így a beviteli mező újra tökéletesen középre zárt, elegáns és minimalista, míg az iPhone-os **Done** gombos automatikus mentés hibátlanul megmaradt.
+
+-----
+
+### Teljes `index.html` kód:
+
+``` html
 <!DOCTYPE html>
 <html lang="hu">
   <head>
@@ -60,7 +67,7 @@
         outline: none;
       }
 
-      /* Letisztult gramm doboz */
+      /* Letisztult gramm doboz - újra egyszerű és középre zárt */
       .dose-container {
         margin: 10px 0 6px 0;
         background: #181818;
@@ -68,12 +75,6 @@
         border-radius: 12px;
         padding: 14px 12px;
         text-align: center;
-      }
-      .input-wrapper {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
       }
       .dose-input {
         width: 100%;
@@ -87,27 +88,13 @@
         border: 1px solid #333333;
         border-radius: 8px;
         outline: none;
+        margin: 0 auto;
+        display: block;
         transition: border-color 0.2s, box-shadow 0.2s;
       }
       .dose-input:focus {
         border-color: #555555;
         box-shadow: 0 0 10px rgba(255, 255, 255, 0.08);
-      }
-      .save-btn {
-        padding: 12px 14px;
-        font-size: 18px;
-        background: #232323;
-        color: #81c784;
-        border: 1px solid #333;
-        border-radius: 8px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        line-height: 1;
-      }
-      .save-btn:active {
-        background: #333;
       }
 
       /* Mentés előtti élő statisztika doboz */
@@ -254,23 +241,20 @@
       </div>
     </div>
 
-    <!-- Adag beviteli mező iPhone Done + Blur + Enter támogatással -->
+    <!-- Adag beviteli mező (letisztult, gomb nélküli, iPhone Done automatikus mentéssel) -->
     <form id="mainDoseForm" onsubmit="event.preventDefault(); autoSubmit();" class="dose-container">
-      <div class="input-wrapper">
-        <input 
-          type="text" 
-          id="amount" 
-          class="dose-input" 
-          placeholder="0.00" 
-          autofocus 
-          inputmode="decimal"
-          enterkeyhint="done"
-          oninput="onTimeOrAmountInput()"
-          onkeydown="handleKey(event)"
-          onblur="handleBlur()"
-        >
-        <button type="submit" class="save-btn" title="Rögzítés">✓</button>
-      </div>
+      <input 
+        type="text" 
+        id="amount" 
+        class="dose-input" 
+        placeholder="0.00" 
+        autofocus 
+        inputmode="decimal"
+        enterkeyhint="done"
+        oninput="onTimeOrAmountInput()"
+        onkeydown="handleKey(event)"
+        onblur="handleBlur()"
+      >
       <!-- Mentés előtti élő statisztika előnézet -->
       <div id="livePreviewBox" class="preview-box">
         <div class="preview-grid">
@@ -386,15 +370,18 @@
         }
       }
 
-      // Amikor az iPhone-on rányomsz a Done gombra (blur esemény lép fel)
+      // Amikor az iPhone-on rányomsz a Done gombra vagy elhagyod a mezőt
       function handleBlur() {
-        var rawVal = document.getElementById('amount').value.trim();
-        var val = getParsedAmount(rawVal);
-        if (val > 0 && !isSaving) {
-          autoSubmit();
-        }
+        setTimeout(function() {
+          var rawVal = document.getElementById('amount').value.trim();
+          var val = getParsedAmount(rawVal);
+          if (val > 0 && !isSaving) {
+            autoSubmit();
+          }
+        }, 150);
       }
 
+      // iPhone tizedesvessző normalizálása
       function getParsedAmount(rawVal) {
         if (!rawVal) return 0;
         var normalized = String(rawVal).replace(',', '.').trim();
@@ -706,3 +693,5 @@
     </script>
   </body>
 </html>
+
+```
