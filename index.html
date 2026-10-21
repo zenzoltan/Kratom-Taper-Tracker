@@ -100,14 +100,6 @@
         color: #a5d6a7;
         text-align: left;
       }
-      .preview-title {
-        font-weight: 700;
-        font-size: 10px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 4px;
-        color: #81c784;
-      }
       .preview-grid {
         display: flex;
         justify-content: space-between;
@@ -240,8 +232,8 @@
       </div>
     </div>
 
-    <!-- Adag beviteli mező (iPhone vessző kompatibilis inputmode="decimal") -->
-    <div class="dose-container">
+    <!-- Adag beviteli mező külön formban, hogy az iPhone ne a következő mezőre ugorjon, hanem azonnal küldje el! -->
+    <form id="mainDoseForm" onsubmit="event.preventDefault(); autoSubmit();" class="dose-container">
       <input 
         type="text" 
         id="amount" 
@@ -249,19 +241,19 @@
         placeholder="0.00" 
         autofocus 
         inputmode="decimal"
+        enterkeyhint="go"
         oninput="onTimeOrAmountInput()"
         onkeydown="handleKey(event)"
       >
-      <!-- Mentés előtti élő statisztika előnézet -->
+      <!-- Mentés előtti élő statisztika előnézet felirat nélkül -->
       <div id="livePreviewBox" class="preview-box">
-        <div class="preview-title">Tervezett hatás (még nincs mentve):</div>
         <div class="preview-grid">
           <div>Össz: <span id="prevTotal" class="preview-item">-</span></div>
           <div>Eltérés: <span id="prevDiff" class="preview-item">-</span></div>
           <div>Ráta: <span id="prevRate" class="preview-item">-</span></div>
         </div>
       </div>
-    </div>
+    </form>
 
     <div id="statusMsg" class="status-idle">Kész</div>
 
@@ -301,7 +293,7 @@
       const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzIBRLlvTMvOJ7GbiJ5wpl4OPp_tpDL13GcqZciif9OF1m832XhHFZ0wbUvAcqUH88/exec";
       var isSaving = false;
       var lastRecordedTimeStr = null;
-      var currentStatsData = null; // Aktuális betöltött adatok a kliensoldali előnézethez
+      var currentStatsData = null;
       var liveTimerInterval = null;
 
       function callApi(params, onSuccess, onError) {
@@ -361,7 +353,6 @@
         document.getElementById('time').value = today.toTimeString().substring(0, 5);
       }
 
-      // Enter leütése -> mentés
       function handleKey(e) {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -369,7 +360,7 @@
         }
       }
 
-      // iPhone vessző javító segédfüggvény
+      // iPhone vesszőt ponttá alakító és számot visszaadó segédfüggvény
       function getParsedAmount(rawVal) {
         if (!rawVal) return 0;
         var normalized = String(rawVal).replace(',', '.').trim();
@@ -377,7 +368,6 @@
         return isNaN(num) ? 0 : num;
       }
 
-      // Mentés előtti élő statisztika kiszámítása
       function onTimeOrAmountInput() {
         var raw = document.getElementById('amount').value;
         var amountVal = getParsedAmount(raw);
@@ -390,12 +380,12 @@
 
         previewBox.style.display = 'block';
 
-        // 1. Tervezett új összdózis
+        // 1. Új napi összdózis előnézet
         var currentTotal = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
         var newTotal = (currentTotal + amountVal).toFixed(2);
         document.getElementById('prevTotal').innerText = newTotal + ' g';
 
-        // 2. Tervezett eltérés az előző adaghoz képest
+        // 2. Új eltérés előnézet
         var last = currentStatsData.lastDose;
         if (last && last.amount) {
           var lastAmt = parseFloat(String(last.amount).replace(',', '.')) || 0;
@@ -406,7 +396,7 @@
           document.getElementById('prevDiff').innerText = '-';
         }
 
-        // 3. Tervezett fogyasztási ráta (adag / előző adag óta eltelt óra)
+        // 3. Új fogyasztási ráta előnézet
         var currentTime = document.getElementById('time').value;
         if (last && last.time && currentTime) {
           var p1 = last.time.split(':');
@@ -414,7 +404,7 @@
           var min1 = parseInt(p1[0], 10) * 60 + parseInt(p1[1], 10);
           var min2 = parseInt(p2[0], 10) * 60 + parseInt(p2[1], 10);
           var diffMin = min2 - min1;
-          if (diffMin <= 0) diffMin += 1440; // éjfélen átnyúlás
+          if (diffMin <= 0) diffMin += 1440;
 
           var hours = diffMin / 60;
           if (hours > 0) {
@@ -458,6 +448,9 @@
 
         if (amountVal <= 0) return;
 
+        // Vessző automatikus normalizálása
+        var cleanAmountString = String(amountInput.value).replace(',', '.').trim();
+
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
         var time = document.getElementById('time').value;
@@ -472,7 +465,7 @@
           sheetName: sheetName,
           dateStr: dateStr,
           time: time,
-          amount: amountVal,
+          amount: cleanAmountString,
           wakeTime: wakeTime
         }, function(res) {
           if (res && res.success) {
@@ -482,6 +475,7 @@
             document.getElementById('livePreviewBox').style.display = 'none';
             isSaving = false;
 
+            // Időpont azonnali frissítése a mostani percre a köv. adaghoz
             document.getElementById('time').value = new Date().toTimeString().substring(0, 5);
 
             if (res.stats && res.stats.found) {
@@ -504,7 +498,6 @@
         });
       }
 
-      // Közvetlen táblázat-cella szerkesztése és azonnali mentése
       function onTableFieldChange(doseNum) {
         var timeInput = document.getElementById('t_time_' + doseNum);
         var amountInput = document.getElementById('t_amount_' + doseNum);
@@ -579,7 +572,7 @@
           document.getElementById('wakeTime').value = data.wakeTime;
         }
 
-        // 1. Legutóbbi adag adatai (FELÜL)
+        // 1. Legutóbbi adag adatai
         var last = data.lastDose;
         var lastCard = document.getElementById('lastDoseStatsContent');
         var timeLabel = document.getElementById('lastDoseTimeLabel');
@@ -613,7 +606,7 @@
           <div class="stat-row"><span class="stat-label">Átlagos időköz</span><span class="stat-value">${data.avgInterval}</span></div>
         `;
 
-        // 3. Szerkeszthető aznapi adagok táblázata (csak Dózis ideje és Adag)
+        // 3. Szerkeszthető aznapi adagok táblázata
         var doses = data.allDoses || [];
         var tableHtml = `
           <table class="doses-table">
