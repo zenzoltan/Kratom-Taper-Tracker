@@ -69,6 +69,12 @@
         padding: 14px 12px;
         text-align: center;
       }
+      .input-wrapper {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
       .dose-input {
         width: 100%;
         max-width: 160px;
@@ -86,6 +92,22 @@
       .dose-input:focus {
         border-color: #555555;
         box-shadow: 0 0 10px rgba(255, 255, 255, 0.08);
+      }
+      .save-btn {
+        padding: 12px 14px;
+        font-size: 18px;
+        background: #232323;
+        color: #81c784;
+        border: 1px solid #333;
+        border-radius: 8px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+      }
+      .save-btn:active {
+        background: #333;
       }
 
       /* Mentés előtti élő statisztika doboz */
@@ -232,20 +254,24 @@
       </div>
     </div>
 
-    <!-- Adag beviteli mező külön formban, hogy az iPhone ne a következő mezőre ugorjon, hanem azonnal küldje el! -->
+    <!-- Adag beviteli mező iPhone Done + Blur + Enter támogatással -->
     <form id="mainDoseForm" onsubmit="event.preventDefault(); autoSubmit();" class="dose-container">
-      <input 
-        type="text" 
-        id="amount" 
-        class="dose-input" 
-        placeholder="0.00" 
-        autofocus 
-        inputmode="decimal"
-        enterkeyhint="go"
-        oninput="onTimeOrAmountInput()"
-        onkeydown="handleKey(event)"
-      >
-      <!-- Mentés előtti élő statisztika előnézet felirat nélkül -->
+      <div class="input-wrapper">
+        <input 
+          type="text" 
+          id="amount" 
+          class="dose-input" 
+          placeholder="0.00" 
+          autofocus 
+          inputmode="decimal"
+          enterkeyhint="done"
+          oninput="onTimeOrAmountInput()"
+          onkeydown="handleKey(event)"
+          onblur="handleBlur()"
+        >
+        <button type="submit" class="save-btn" title="Rögzítés">✓</button>
+      </div>
+      <!-- Mentés előtti élő statisztika előnézet -->
       <div id="livePreviewBox" class="preview-box">
         <div class="preview-grid">
           <div>Össz: <span id="prevTotal" class="preview-item">-</span></div>
@@ -360,7 +386,15 @@
         }
       }
 
-      // iPhone vesszőt ponttá alakító és számot visszaadó segédfüggvény
+      // Amikor az iPhone-on rányomsz a Done gombra (blur esemény lép fel)
+      function handleBlur() {
+        var rawVal = document.getElementById('amount').value.trim();
+        var val = getParsedAmount(rawVal);
+        if (val > 0 && !isSaving) {
+          autoSubmit();
+        }
+      }
+
       function getParsedAmount(rawVal) {
         if (!rawVal) return 0;
         var normalized = String(rawVal).replace(',', '.').trim();
@@ -448,9 +482,7 @@
 
         if (amountVal <= 0) return;
 
-        // Vessző automatikus normalizálása
         var cleanAmountString = String(amountInput.value).replace(',', '.').trim();
-
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
         var time = document.getElementById('time').value;
@@ -475,7 +507,6 @@
             document.getElementById('livePreviewBox').style.display = 'none';
             isSaving = false;
 
-            // Időpont azonnali frissítése a mostani percre a köv. adaghoz
             document.getElementById('time').value = new Date().toTimeString().substring(0, 5);
 
             if (res.stats && res.stats.found) {
