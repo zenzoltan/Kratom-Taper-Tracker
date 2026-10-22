@@ -253,7 +253,7 @@
         <div class="preview-grid">
           <div>Össz: <span id="prevTotal" class="preview-item">-</span></div>
           <div>Eltérés: <span id="prevDiff" class="preview-item">-</span></div>
-          <div>Ráta: <span id="prevRate" class="preview-item">-</span><span id="prevRateYest" style="font-size: 11px; margin-left: 2px;"></span></div>
+          <div>Ráta: <span id="prevRate" class="preview-item">-</span> <span id="prevRateYest" style="font-size: 12px; font-weight: 600;"></span></div>
         </div>
       </div>
     </form>
@@ -425,7 +425,6 @@
             rateVal = parseFloat((newTotal / awakeHours).toFixed(2));
           }
         } else if (last && last.time && currentTime) {
-          // Ha nincs ébredési idő, a legutóbbi adag óta eltelt idővel számol
           var p1 = last.time.split(':');
           var p2 = currentTime.split(':');
           var min1 = parseInt(p1[0], 10) * 60 + parseInt(p1[1], 10);
@@ -444,7 +443,6 @@
         if (rateVal !== null) {
           rateEl.innerText = rateVal.toFixed(2) + ' g/ó';
 
-          // Megnézzük, hányadik dózis készül most rögzülni
           var currentRecordedCount = 0;
           if (currentStatsData.allDoses) {
             for (var d = 0; d < currentStatsData.allDoses.length; d++) {
@@ -453,19 +451,16 @@
           }
           var nextDoseNum = currentRecordedCount + 1;
 
-          // Összevetés a tegnapi azonos sorszámú dózis rátájával
           var yestRate = (currentStatsData.yesterdayRates && currentStatsData.yesterdayRates[nextDoseNum])
             ? currentStatsData.yesterdayRates[nextDoseNum]
             : null;
 
           if (yestRate !== null && yestRate > 0) {
-            rateYestEl.innerText = '(teg: ' + yestRate.toFixed(2) + ')';
+            rateYestEl.innerText = yestRate.toFixed(2);
             if (rateVal > yestRate) {
-              // Több lett mint tegnap -> PIROS
               rateEl.style.color = '#ef5350';
               rateYestEl.style.color = '#ef5350';
             } else {
-              // Kevesebb vagy egyenlő -> ZÖLD
               rateEl.style.color = '#81c784';
               rateYestEl.style.color = '#81c784';
             }
