@@ -234,7 +234,7 @@
       </div>
     </div>
 
-    <!-- Adag beviteli mező iPhone Done + Blur + Enter mentéssel -->
+    <!-- Adag beviteli mező -->
     <form id="mainDoseForm" onsubmit="event.preventDefault(); autoSubmit();" class="dose-container">
       <input 
         type="text" 
@@ -293,10 +293,10 @@
     </div>
 
     <script>
-      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx6bbgQISqV0jmNonpdRobd2MoTnrd1FO7-NW01MuGZGUx43qUL4PxrDbzpha-xzPA/exec";
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzJKaYFhkfOpbp13tsI1BGl_PGJFaKhjE3oOLEMUIb9QFhZ6svUFUUvepyI_eEjwnA/exec";
       var isSaving = false;
       var lastRecordedTimeStr = null;
-      var currentStatsData = null;
+      var currentStatsData = null; // Aktuális betöltött adatok
       var liveTimerInterval = null;
 
       function callApi(params, onSuccess, onError) {
@@ -333,9 +333,15 @@
         liveTimerInterval = setInterval(updateLiveElapsedTime, 30000);
       };
 
+      // Profilváltáskor azonnal töröljük a memóriát, hogy ne keveredjenek a számok!
       function onProfileChange() {
         var profile = document.getElementById('sheetName').value;
         localStorage.setItem('taper_active_profile', profile);
+        
+        currentStatsData = null;
+        document.getElementById('livePreviewBox').style.display = 'none';
+        document.getElementById('amount').value = '';
+
         loadStats();
       }
 
@@ -380,24 +386,30 @@
         return isNaN(num) ? 0 : num;
       }
 
+      // Élő statisztika és összehasonlítás számítása
       function onTimeOrAmountInput() {
         var raw = document.getElementById('amount').value;
         var amountVal = getParsedAmount(raw);
         var previewBox = document.getElementById('livePreviewBox');
+        var rateEl = document.getElementById('prevRate');
+        var rateYestEl = document.getElementById('prevRateYest');
 
+        // Ha üres vagy érvénytelen, azonnal elrejtjük és alaphelyzetbe állítjuk a színeket
         if (amountVal <= 0 || !currentStatsData) {
           previewBox.style.display = 'none';
+          rateEl.style.color = '#a5d6a7';
+          rateYestEl.innerText = '';
           return;
         }
 
         previewBox.style.display = 'block';
 
-        // 1. Új összdózis
+        // 1. Tervezett új napi összdózis
         var currentTotal = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
         var newTotal = currentTotal + amountVal;
         document.getElementById('prevTotal').innerText = newTotal.toFixed(2) + ' g';
 
-        // 2. Új eltérés
+        // 2. Tervezett eltérés
         var last = currentStatsData.lastDose;
         if (last && last.amount) {
           var lastAmt = parseFloat(String(last.amount).replace(',', '.')) || 0;
@@ -408,7 +420,7 @@
           document.getElementById('prevDiff').innerText = '-';
         }
 
-        // 3. Fogyasztási ráta kiszámítása (Összdózis / Ébren töltött órák)
+        // 3. Fogyasztási ráta kiszámítása a táblázat szabályai szerint
         var currentTime = document.getElementById('time').value;
         var wakeVal = document.getElementById('wakeTime').value;
         var rateVal = null;
@@ -437,12 +449,10 @@
           }
         }
 
-        var rateEl = document.getElementById('prevRate');
-        var rateYestEl = document.getElementById('prevRateYest');
-
-        if (rateVal !== null) {
+        if (rateVal !== null && !isNaN(rateVal)) {
           rateEl.innerText = rateVal.toFixed(2) + ' g/ó';
 
+          // Következő adag sorszáma a mai napon
           var currentRecordedCount = 0;
           if (currentStatsData.allDoses) {
             for (var d = 0; d < currentStatsData.allDoses.length; d++) {
@@ -451,16 +461,25 @@
           }
           var nextDoseNum = currentRecordedCount + 1;
 
-          var yestRate = (currentStatsData.yesterdayRates && currentStatsData.yesterdayRates[nextDoseNum])
-            ? currentStatsData.yesterdayRates[nextDoseNum]
-            : null;
+          // Tegnapi ráta kiolvasása a mostani adag sorszámához
+          var yestRate = null;
+          var yMap = currentStatsData.yesterdayRates;
+          if (yMap) {
+            if (yMap[nextDoseNum] !== undefined) {
+              yestRate = parseFloat(yMap[nextDoseNum]);
+            } else if (yMap[String(nextDoseNum)] !== undefined) {
+              yestRate = parseFloat(yMap[String(nextDoseNum)]);
+            }
+          }
 
-          if (yestRate !== null && yestRate > 0) {
+          if (yestRate !== null && !isNaN(yestRate) && yestRate > 0) {
             rateYestEl.innerText = yestRate.toFixed(2);
             if (rateVal > yestRate) {
+              // TÖBB LETT -> PIROS
               rateEl.style.color = '#ef5350';
               rateYestEl.style.color = '#ef5350';
             } else {
+              // KEVESEBB VAGY EGYENLŐ -> ZÖLD
               rateEl.style.color = '#81c784';
               rateYestEl.style.color = '#81c784';
             }
@@ -728,4 +747,4 @@
       }
     </script>
   </body>
-</html>
+</html> 
