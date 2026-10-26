@@ -9,7 +9,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#121212">
 
-    <!-- Diszkrét semleges ikon iPhone-ra -->
     <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='120' fill='%23181818'/%3E%3Ccircle cx='256' cy='256' r='160' fill='none' stroke='%23333333' stroke-width='28'/%3E%3Ccircle cx='256' cy='256' r='160' fill='none' stroke='%234a90e2' stroke-width='28' stroke-dasharray='700' stroke-dashoffset='220' stroke-linecap='round'/%3E%3Ccircle cx='256' cy='256' r='36' fill='%23ffffff'/%3E%3C/svg%3E">
 
     <style>
@@ -60,7 +59,6 @@
         outline: none;
       }
 
-      /* Letisztult gramm doboz */
       .dose-container {
         margin: 10px 0 6px 0;
         background: #181818;
@@ -90,7 +88,6 @@
         box-shadow: 0 0 10px rgba(255, 255, 255, 0.08);
       }
 
-      /* Mentés előtti élő statisztika doboz */
       .preview-box {
         display: none;
         margin-top: 10px;
@@ -122,7 +119,6 @@
       .status-success { color: #7cb342; }
       .status-error { color: #e57373; }
 
-      /* Statisztikai kártyák */
       .card {
         margin-top: 12px;
         background: #181818;
@@ -172,7 +168,6 @@
         padding: 8px 0;
       }
 
-      /* Szerkeszthető aznapi adagok táblázata */
       .doses-table {
         width: 100%;
         border-collapse: collapse;
@@ -248,7 +243,6 @@
         onkeydown="handleKey(event)"
         onblur="handleBlur()"
       >
-      <!-- Mentés előtti élő statisztika előnézet -->
       <div id="livePreviewBox" class="preview-box">
         <div class="preview-grid">
           <div>Össz: <span id="prevTotal" class="preview-item">-</span></div>
@@ -293,11 +287,11 @@
     </div>
 
     <script>
-      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxMT8NIG2QO9-MxzshZAgtH-xppWN6bF7e4ocGSiYHcYd0QUBT1DzFZeCaDAyHmUZk/exec";
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzm8VppI6uZJ3LDT6_pqrTkTPsN7ERfkowKd7gxOAU7rXZgg22HgYVR6MwF89jD4EU/exec";
       var isSaving = false;
       var lastRecordedTimeStr = null;
-      var currentStatsData = null; // Aktuális betöltött adatok
-      var liveTimerInterval = null;
+      var currentStatsData = null;
+      var isEditingTable = false; // Megakadályozza a táblázat felülírását szerkesztés közben!
 
       function callApi(params, onSuccess, onError) {
         const callbackName = 'jsonp_cb_' + Math.round(100000 * Math.random());
@@ -329,11 +323,10 @@
         loadStats();
         focusAmount();
 
-        if (liveTimerInterval) clearInterval(liveTimerInterval);
-        liveTimerInterval = setInterval(updateLiveElapsedTime, 30000);
+        // Csak a felső számlálót frissíti percenként, az alsó táblázatot SOHA nem bántja!
+        setInterval(updateLiveElapsedTime, 30000);
       };
 
-      // Profilváltáskor azonnal töröljük a memóriát, hogy ne keveredjenek a számok!
       function onProfileChange() {
         var profile = document.getElementById('sheetName').value;
         localStorage.setItem('taper_active_profile', profile);
@@ -386,7 +379,6 @@
         return isNaN(num) ? 0 : num;
       }
 
-      // Élő statisztika és összehasonlítás számítása
       function onTimeOrAmountInput() {
         var raw = document.getElementById('amount').value;
         var amountVal = getParsedAmount(raw);
@@ -394,7 +386,6 @@
         var rateEl = document.getElementById('prevRate');
         var rateYestEl = document.getElementById('prevRateYest');
 
-        // Ha üres vagy érvénytelen, azonnal elrejtjük és alaphelyzetbe állítjuk a színeket
         if (amountVal <= 0 || !currentStatsData) {
           previewBox.style.display = 'none';
           rateEl.style.color = '#a5d6a7';
@@ -404,12 +395,10 @@
 
         previewBox.style.display = 'block';
 
-        // 1. Tervezett új napi összdózis
         var currentTotal = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
         var newTotal = currentTotal + amountVal;
         document.getElementById('prevTotal').innerText = newTotal.toFixed(2) + ' g';
 
-        // 2. Tervezett eltérés
         var last = currentStatsData.lastDose;
         if (last && last.amount) {
           var lastAmt = parseFloat(String(last.amount).replace(',', '.')) || 0;
@@ -420,7 +409,6 @@
           document.getElementById('prevDiff').innerText = '-';
         }
 
-        // 3. Fogyasztási ráta kiszámítása a táblázat szabályai szerint
         var currentTime = document.getElementById('time').value;
         var wakeVal = document.getElementById('wakeTime').value;
         var rateVal = null;
@@ -452,7 +440,6 @@
         if (rateVal !== null && !isNaN(rateVal)) {
           rateEl.innerText = rateVal.toFixed(2) + ' g/ó';
 
-          // Következő adag sorszáma a mai napon
           var currentRecordedCount = 0;
           if (currentStatsData.allDoses) {
             for (var d = 0; d < currentStatsData.allDoses.length; d++) {
@@ -461,7 +448,6 @@
           }
           var nextDoseNum = currentRecordedCount + 1;
 
-          // Tegnapi ráta kiolvasása a mostani adag sorszámához
           var yestRate = null;
           var yMap = currentStatsData.yesterdayRates;
           if (yMap) {
@@ -475,11 +461,9 @@
           if (yestRate !== null && !isNaN(yestRate) && yestRate > 0) {
             rateYestEl.innerText = yestRate.toFixed(2);
             if (rateVal > yestRate) {
-              // TÖBB LETT -> PIROS
               rateEl.style.color = '#ef5350';
               rateYestEl.style.color = '#ef5350';
             } else {
-              // KEVESEBB VAGY EGYENLŐ -> ZÖLD
               rateEl.style.color = '#81c784';
               rateYestEl.style.color = '#81c784';
             }
@@ -571,13 +555,19 @@
         });
       }
 
+      // Csak akkor menti az alsó táblázatot, ha az időpont és a gramm is érvényes!
       function onTableFieldChange(doseNum) {
         var timeInput = document.getElementById('t_time_' + doseNum);
         var amountInput = document.getElementById('t_amount_' + doseNum);
 
-        var newTime = timeInput ? timeInput.value : '';
-        var rawAmt = amountInput ? amountInput.value : '';
+        var newTime = timeInput ? timeInput.value.trim() : '';
+        var rawAmt = amountInput ? amountInput.value.trim() : '';
         var newAmount = getParsedAmount(rawAmt);
+
+        // Ha van gramm, de az idő még üres, NEM küldünk semmit, várunk a felhasználóra!
+        if (newAmount > 0 && !newTime) {
+          return;
+        }
 
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
@@ -593,7 +583,7 @@
           amount: newAmount
         }, function(res) {
           if (res && res.success) {
-            setStatus('#' + doseNum + ' adag frissítve', 'status-success');
+            setStatus('#' + doseNum + ' frissítve', 'status-success');
             renderAllStats(res.stats);
             setTimeout(() => { setStatus('', 'status-idle'); }, 2000);
           }
@@ -679,7 +669,10 @@
           <div class="stat-row"><span class="stat-label">Átlagos időköz</span><span class="stat-value">${data.avgInterval}</span></div>
         `;
 
-        // 3. Szerkeszthető aznapi adagok táblázata
+        // 3. Szerkeszthető aznapi adagok táblázata (Védve a fókuszvesztéstől)
+        var activeEl = document.activeElement;
+        var activeId = activeEl ? activeEl.id : null;
+
         var doses = data.allDoses || [];
         var tableHtml = `
           <table class="doses-table">
@@ -714,6 +707,11 @@
         `;
 
         document.getElementById('editableDosesContent').innerHTML = tableHtml;
+
+        // Visszaadjuk a fókuszt, ha épp gépeltél
+        if (activeId && document.getElementById(activeId)) {
+          document.getElementById(activeId).focus();
+        }
       }
 
       function updateLiveElapsedTime() {
@@ -747,4 +745,4 @@
       }
     </script>
   </body>
-</html> 
+</html>
