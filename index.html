@@ -287,11 +287,10 @@
     </div>
 
     <script>
-      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzm8VppI6uZJ3LDT6_pqrTkTPsN7ERfkowKd7gxOAU7rXZgg22HgYVR6MwF89jD4EU/exec";
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbygZVABWrMqSZ2JMCnCVqOwconHn3lyyNrSh3uzxEVx4R8qZDzZwXLGzyOqSHmu_PA/exec";
       var isSaving = false;
       var lastRecordedTimeStr = null;
       var currentStatsData = null;
-      var isEditingTable = false; // Megakadályozza a táblázat felülírását szerkesztés közben!
 
       function callApi(params, onSuccess, onError) {
         const callbackName = 'jsonp_cb_' + Math.round(100000 * Math.random());
@@ -323,7 +322,6 @@
         loadStats();
         focusAmount();
 
-        // Csak a felső számlálót frissíti percenként, az alsó táblázatot SOHA nem bántja!
         setInterval(updateLiveElapsedTime, 30000);
       };
 
@@ -492,6 +490,7 @@
         }, function(res) {
           if (res && res.success) {
             setStatus('Ébredés frissítve', 'status-success');
+            saveToLocalCache(sheetName, dateStr, res.stats);
             renderAllStats(res.stats);
             setTimeout(() => { setStatus('', 'status-idle'); }, 2000);
           }
@@ -536,6 +535,7 @@
             document.getElementById('time').value = new Date().toTimeString().substring(0, 5);
 
             if (res.stats && res.stats.found) {
+              saveToLocalCache(sheetName, dateStr, res.stats);
               renderAllStats(res.stats);
             }
             focusAmount();
@@ -555,7 +555,6 @@
         });
       }
 
-      // Csak akkor menti az alsó táblázatot, ha az időpont és a gramm is érvényes!
       function onTableFieldChange(doseNum) {
         var timeInput = document.getElementById('t_time_' + doseNum);
         var amountInput = document.getElementById('t_amount_' + doseNum);
@@ -564,7 +563,6 @@
         var rawAmt = amountInput ? amountInput.value.trim() : '';
         var newAmount = getParsedAmount(rawAmt);
 
-        // Ha van gramm, de az idő még üres, NEM küldünk semmit, várunk a felhasználóra!
         if (newAmount > 0 && !newTime) {
           return;
         }
@@ -584,6 +582,7 @@
         }, function(res) {
           if (res && res.success) {
             setStatus('#' + doseNum + ' frissítve', 'status-success');
+            saveToLocalCache(sheetName, dateStr, res.stats);
             renderAllStats(res.stats);
             setTimeout(() => { setStatus('', 'status-idle'); }, 2000);
           }
@@ -598,33 +597,63 @@
         el.className = className;
       }
 
+      function saveToLocalCache(sheetName, dateStr, data) {
+        try {
+          localStorage.setItem('taper_fast_cache_' + sheetName + '_' + dateStr, JSON.stringify(data));
+        } catch(e) {}
+      }
+
+      // 0.05 másodperces azonnali betöltés a telefon memóriájából!
       function loadStats() {
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
         document.getElementById('dateSubtitle').innerText = dateStr;
 
-        document.getElementById('lastDoseStatsContent').innerHTML = '<div class="loading">Betöltés...</div>';
-        document.getElementById('summaryStatsContent').innerHTML = '<div class="loading">Betöltés...</div>';
-        document.getElementById('editableDosesContent').innerHTML = '<div class="loading">Betöltés...</div>';
+        var cacheKey = 'taper_fast_cache_' + sheetName + '_' + dateStr;
+        var hasCachedData = false;
 
+        try {
+          var cached = localStorage.getItem(cacheKey);
+          if (cached) {
+            var parsed = JSON.parse(cached);
+            if (parsed && parsed.found) {
+              currentStatsData = parsed;
+              renderAllStats(parsed);
+              hasCachedData = true;
+            }
+          }
+        } catch(e) {}
+
+        if (!hasCachedData) {
+          document.getElementById('lastDoseStatsContent').innerHTML = '<div class="loading">Betöltés...</div>';
+          document.getElementById('summaryStatsContent').innerHTML = '<div class="loading">Betöltés...</div>';
+          document.getElementById('editableDosesContent').innerHTML = '<div class="loading">Betöltés...</div>';
+        }
+
+        // Háttérben lekérjük a legfrissebb adatokat a szerverről
         callApi({
           action: 'getStats',
           sheetName: sheetName,
           dateStr: dateStr
         }, function(data) {
           if (!data || !data.found) {
-            currentStatsData = null;
-            document.getElementById('lastDoseStatsContent').innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">Nincs korábbi adag.</div>';
-            document.getElementById('summaryStatsContent').innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">Nincs bejegyzés erre a napra.</div>';
-            document.getElementById('editableDosesContent').innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">Nincs adat.</div>';
+            if (!hasCachedData) {
+              currentStatsData = null;
+              document.getElementById('lastDoseStatsContent').innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">Nincs korábbi adag.</div>';
+              document.getElementById('summaryStatsContent').innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">Nincs bejegyzés erre a napra.</div>';
+              document.getElementById('editableDosesContent').innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">Nincs adat.</div>';
+            }
             return;
           }
           currentStatsData = data;
+          saveToLocalCache(sheetName, dateStr, data);
           renderAllStats(data);
         }, function(err) {
-          document.getElementById('lastDoseStatsContent').innerHTML = '';
-          document.getElementById('summaryStatsContent').innerHTML = '<div style="color: #e57373; font-size: 12px; padding: 8px;">Hiba: ' + err.message + '</div>';
-          document.getElementById('editableDosesContent').innerHTML = '';
+          if (!hasCachedData) {
+            document.getElementById('lastDoseStatsContent').innerHTML = '';
+            document.getElementById('summaryStatsContent').innerHTML = '<div style="color: #e57373; font-size: 12px; padding: 8px;">Hiba: ' + err.message + '</div>';
+            document.getElementById('editableDosesContent').innerHTML = '';
+          }
         });
       }
 
@@ -669,7 +698,7 @@
           <div class="stat-row"><span class="stat-label">Átlagos időköz</span><span class="stat-value">${data.avgInterval}</span></div>
         `;
 
-        // 3. Szerkeszthető aznapi adagok táblázata (Védve a fókuszvesztéstől)
+        // 3. Szerkeszthető aznapi adagok táblázata
         var activeEl = document.activeElement;
         var activeId = activeEl ? activeEl.id : null;
 
@@ -708,7 +737,6 @@
 
         document.getElementById('editableDosesContent').innerHTML = tableHtml;
 
-        // Visszaadjuk a fókuszt, ha épp gépeltél
         if (activeId && document.getElementById(activeId)) {
           document.getElementById(activeId).focus();
         }
@@ -745,4 +773,4 @@
       }
     </script>
   </body>
-</html>
+</html> 
