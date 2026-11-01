@@ -409,7 +409,7 @@
         return isNaN(num) ? 0 : num;
       }
 
-      // SMOOTH TAPER: PONTOSAN -0.015 g/óra CSÖKKENTÉS A 7 NAPOS SZŰRT BÁZISHOZ KÉPEST
+      // Javaslat: pontosan -0.015 g/óra csökkentés a 7 napos szűrt bázishoz képest
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
 
@@ -434,7 +434,6 @@
 
         if (!baselineRate || isNaN(baselineRate) || baselineRate <= 0.05) return;
 
-        // Célráta: mindig -0.015 g/óra csökkentés
         var targetRate = Math.max(0.05, baselineRate - 0.015);
 
         var currentTime = document.getElementById('time').value;
@@ -551,9 +550,11 @@
 
           if (baselineRate !== null && !isNaN(baselineRate) && baselineRate > 0) {
             rateYestEl.innerText = baselineRate.toFixed(2);
-            // Ha a ráta a kívánt -0.015-ös cél felett van, pirosodik
-            var targetLimit = baselineRate - 0.015;
-            if (rateVal > targetLimit) {
+            
+            // PONTOS ÖSSZEHASONLÍTÁS:
+            // Ha akár 0.01-gyel is kevesebb vagy egyenlő -> ZÖLD
+            // Ha több -> PIROS
+            if (rateVal > baselineRate) {
               rateEl.style.color = '#ef5350';
               rateYestEl.style.color = '#ef5350';
             } else {
@@ -651,7 +652,6 @@
         });
       }
 
-      // KÉNYELMES ÉS BIZTONSÁGOS: AZ EGÉSZ TÁBLÁZAT EGY MENETBEN MENTŐDIK
       function saveTableDoses() {
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
