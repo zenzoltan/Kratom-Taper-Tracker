@@ -9,6 +9,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#121212">
 
+    <!-- Diszkrét semleges ikon iPhone-ra -->
     <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='120' fill='%23181818'/%3E%3Ccircle cx='256' cy='256' r='160' fill='none' stroke='%23333333' stroke-width='28'/%3E%3Ccircle cx='256' cy='256' r='160' fill='none' stroke='%234a90e2' stroke-width='28' stroke-dasharray='700' stroke-dashoffset='220' stroke-linecap='round'/%3E%3Ccircle cx='256' cy='256' r='36' fill='%23ffffff'/%3E%3C/svg%3E">
 
     <style>
@@ -59,6 +60,7 @@
         outline: none;
       }
 
+      /* Letisztult gramm doboz */
       .dose-container {
         margin: 10px 0 6px 0;
         background: #181818;
@@ -88,6 +90,7 @@
         box-shadow: 0 0 10px rgba(255, 255, 255, 0.08);
       }
 
+      /* Mentés előtti élő statisztika doboz */
       .preview-box {
         display: none;
         margin-top: 10px;
@@ -119,6 +122,7 @@
       .status-success { color: #7cb342; }
       .status-error { color: #e57373; }
 
+      /* Statisztikai kártyák */
       .card {
         margin-top: 12px;
         background: #181818;
@@ -168,6 +172,7 @@
         padding: 8px 0;
       }
 
+      /* Szerkeszthető aznapi adagok táblázata */
       .doses-table {
         width: 100%;
         border-collapse: collapse;
@@ -225,7 +230,7 @@
       </div>
       <div class="form-group" style="max-width: 82px;">
         <label for="time">Időpont</label>
-        <input type="time" id="time" onchange="onTimeOrAmountInput()" required>
+        <input type="time" id="time" onchange="onTimeChange()" required>
       </div>
     </div>
 
@@ -239,10 +244,11 @@
         autofocus 
         inputmode="decimal"
         enterkeyhint="done"
-        oninput="onTimeOrAmountInput()"
+        oninput="onUserTyping()"
         onkeydown="handleKey(event)"
         onblur="handleBlur()"
       >
+      <!-- Mentés előtti élő statisztika előnézet -->
       <div id="livePreviewBox" class="preview-box">
         <div class="preview-grid">
           <div>Össz: <span id="prevTotal" class="preview-item">-</span></div>
@@ -291,6 +297,7 @@
       var isSaving = false;
       var lastRecordedTimeStr = null;
       var currentStatsData = null;
+      var isUserModified = false; // Jelzi, ha a felhasználó kézzel átírta az értéket
 
       function callApi(params, onSuccess, onError) {
         const callbackName = 'jsonp_cb_' + Math.round(100000 * Math.random());
@@ -330,6 +337,7 @@
         localStorage.setItem('taper_active_profile', profile);
         
         currentStatsData = null;
+        isUserModified = false;
         document.getElementById('livePreviewBox').style.display = 'none';
         document.getElementById('amount').value = '';
 
@@ -364,10 +372,25 @@
         setTimeout(function() {
           var rawVal = document.getElementById('amount').value.trim();
           var val = getParsedAmount(rawVal);
-          if (val > 0 && !isSaving) {
+          // Csak akkor mentünk automatikusan blur-re, ha a felhasználó kézzel belenyúlt
+          if (val > 0 && !isSaving && isUserModified) {
             autoSubmit();
           }
         }, 150);
+      }
+
+      function onUserTyping() {
+        isUserModified = true;
+        onTimeOrAmountInput();
+      }
+
+      function onTimeChange() {
+        // Ha változik az időpont, és még nem nyúlt hozzá a felhasználó, újraszámoljuk a javaslatot
+        if (!isUserModified && currentStatsData) {
+          applyDoseRecommendation(currentStatsData);
+        } else {
+          onTimeOrAmountInput();
+        }
       }
 
       function getParsedAmount(rawVal) {
@@ -375,6 +398,74 @@
         var normalized = String(rawVal).replace(',', '.').trim();
         var num = parseFloat(normalized);
         return isNaN(num) ? 0 : num;
+      }
+
+      // OKOS ADAGJAVASLAT KISZÁMÍTÁSA (tegnapi ráta - 0.1 g/ó célhoz)
+      function applyDoseRecommendation(data) {
+        if (!data || !data.found || isUserModified) return;
+
+        // 1. Hányadik adag jön most?
+        var currentRecordedCount = 0;
+        if (data.allDoses) {
+          for (var d = 0; d < data.allDoses.length; d++) {
+            if (data.allDoses[d].hasData) currentRecordedCount++;
+          }
+        }
+        var nextDoseNum = currentRecordedCount + 1;
+        if (nextDoseNum > 8) return;
+
+        // 2. Tegnapi azonos sorszámú ráta lekérése
+        var yMap = data.yesterdayRates;
+        var yestRate = null;
+        if (yMap) {
+          if (yMap[nextDoseNum] !== undefined) {
+            yestRate = parseFloat(yMap[nextDoseNum]);
+          } else if (yMap[String(nextDoseNum)] !== undefined) {
+            yestRate = parseFloat(yMap[String(nextDoseNum)]);
+          }
+        }
+
+        // Csak akkor számolunk, ha tegnap létezett ez az adag és volt érvényes rátája
+        if (!yestRate || isNaN(yestRate) || yestRate <= 0.1) return;
+
+        // 3. Célráta: pontosan 0.1 g/órával kevesebb, mint tegnap
+        var targetRate = Math.max(0.1, yestRate - 0.1);
+
+        // 4. Ébren töltött órák a jelenlegi pillanathoz
+        var currentTime = document.getElementById('time').value;
+        var wakeVal = document.getElementById('wakeTime').value;
+        var awakeHours = null;
+
+        if (wakeVal && currentTime) {
+          var wp = wakeVal.split(':');
+          var cp = currentTime.split(':');
+          var wakeM = parseInt(wp[0], 10) * 60 + parseInt(wp[1], 10);
+          var curM = parseInt(cp[0], 10) * 60 + parseInt(cp[1], 10);
+          var awakeMin = curM - wakeM;
+          if (awakeMin <= 0) awakeMin += 1440;
+          awakeHours = awakeMin / 60;
+        } else if (data.lastDose && data.lastDose.time && currentTime) {
+          var p1 = data.lastDose.time.split(':');
+          var p2 = currentTime.split(':');
+          var min1 = parseInt(p1[0], 10) * 60 + parseInt(p1[1], 10);
+          var min2 = parseInt(p2[0], 10) * 60 + parseInt(p2[1], 10);
+          var diffMin = min2 - min1;
+          if (diffMin <= 0) diffMin += 1440;
+          awakeHours = diffMin / 60;
+        }
+
+        if (!awakeHours || awakeHours <= 0) return;
+
+        // 5. Eddigi összdózis ma
+        var currentTotal = parseFloat(String(data.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
+
+        // 6. Szükséges gramm kiszámítása
+        var neededDose = (targetRate * awakeHours) - currentTotal;
+        if (neededDose > 0.1) {
+          var recommended = parseFloat(neededDose.toFixed(2));
+          document.getElementById('amount').value = recommended.toFixed(2);
+          onTimeOrAmountInput();
+        }
       }
 
       function onTimeOrAmountInput() {
@@ -393,10 +484,12 @@
 
         previewBox.style.display = 'block';
 
+        // 1. Tervezett új napi összdózis
         var currentTotal = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
         var newTotal = currentTotal + amountVal;
         document.getElementById('prevTotal').innerText = newTotal.toFixed(2) + ' g';
 
+        // 2. Tervezett eltérés
         var last = currentStatsData.lastDose;
         if (last && last.amount) {
           var lastAmt = parseFloat(String(last.amount).replace(',', '.')) || 0;
@@ -407,6 +500,7 @@
           document.getElementById('prevDiff').innerText = '-';
         }
 
+        // 3. Fogyasztási ráta kiszámítása
         var currentTime = document.getElementById('time').value;
         var wakeVal = document.getElementById('wakeTime').value;
         var rateVal = null;
@@ -529,6 +623,7 @@
             setStatus(amountVal + ' g rögzítve', 'status-success');
             amountInput.disabled = false;
             amountInput.value = '';
+            isUserModified = false;
             document.getElementById('livePreviewBox').style.display = 'none';
             isSaving = false;
 
@@ -603,7 +698,6 @@
         } catch(e) {}
       }
 
-      // 0.05 másodperces azonnali betöltés a telefon memóriájából!
       function loadStats() {
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
@@ -630,7 +724,6 @@
           document.getElementById('editableDosesContent').innerHTML = '<div class="loading">Betöltés...</div>';
         }
 
-        // Háttérben lekérjük a legfrissebb adatokat a szerverről
         callApi({
           action: 'getStats',
           sheetName: sheetName,
@@ -740,6 +833,9 @@
         if (activeId && document.getElementById(activeId)) {
           document.getElementById(activeId).focus();
         }
+
+        // 4. JAVASOLT DÓZIS AUTOMATIKUS KISZÁMÍTÁSA ÉS BEÍRÁSA
+        applyDoseRecommendation(data);
       }
 
       function updateLiveElapsedTime() {
@@ -773,4 +869,4 @@
       }
     </script>
   </body>
-</html> 
+</html>
