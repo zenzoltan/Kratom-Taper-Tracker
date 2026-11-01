@@ -137,7 +137,24 @@
         border-bottom: 1px solid #222;
         display: flex;
         justify-content: space-between;
+        align-items: center;
       }
+      .table-save-btn {
+        background: #2e7d32;
+        color: #ffffff;
+        border: none;
+        border-radius: 6px;
+        padding: 5px 12px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        cursor: pointer;
+        letter-spacing: 0.5px;
+      }
+      .table-save-btn:active {
+        background: #1b5e20;
+      }
+
       .stat-row {
         display: flex;
         justify-content: space-between;
@@ -228,6 +245,7 @@
       </div>
     </div>
 
+    <!-- Fő beviteli mező -->
     <form id="mainDoseForm" onsubmit="event.preventDefault(); autoSubmit();" class="dose-container">
       <input 
         type="text" 
@@ -252,6 +270,7 @@
 
     <div id="statusMsg" class="status-idle">Kész</div>
 
+    <!-- 1. BLOKK: UTOLSÓ BEÍRT ADAG ADATAI -->
     <div class="card">
       <div class="card-header">
         <span>Legutóbbi tétel</span>
@@ -262,6 +281,7 @@
       </div>
     </div>
 
+    <!-- 2. BLOKK: NAPI ADATOK ÉS ÁTLAGOK -->
     <div class="card">
       <div class="card-header">
         <span>Napi adatok</span>
@@ -272,9 +292,11 @@
       </div>
     </div>
 
+    <!-- 3. BLOKK: SZERKESZTHETŐ AZNAPI ADAGOK TÁBLÁZATA BIZTONSÁGOS MENTÉSSEL -->
     <div class="card">
       <div class="card-header">
-        <span>Aznapi adagok szerkesztése</span>
+        <span>Aznapi adagok</span>
+        <button type="button" class="table-save-btn" onclick="saveTableDoses()">Mentés</button>
       </div>
       <div id="editableDosesContent">
         <div class="loading">Betöltés...</div>
@@ -282,7 +304,7 @@
     </div>
 
     <script>
-      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwec55RLp8NAJePpNIet99T9J_kYyjATdwWAUdAv6LidM2YjlWpJ7IpyHd726XokIc/exec";
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxh_ye5_MhrFTcsWq_9LK3If1tAQqgHufOcdCkw0K4k8b4HF5TCuUzX-P2btKsJfcw/exec";
       var isSaving = false;
       var lastRecordedTimeStr = null;
       var currentStatsData = null;
@@ -387,7 +409,7 @@
         return isNaN(num) ? 0 : num;
       }
 
-      // JAVASLAT: 7 NAPOS SZŰRT BÁZISRÁTA ALAPJÁN
+      // SMOOTH TAPER: PONTOSAN -0.015 g/óra CSÖKKENTÉS A 7 NAPOS SZŰRT BÁZISHOZ KÉPEST
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
 
@@ -410,10 +432,10 @@
           }
         }
 
-        if (!baselineRate || isNaN(baselineRate) || baselineRate <= 0.1) return;
+        if (!baselineRate || isNaN(baselineRate) || baselineRate <= 0.05) return;
 
-        // Cél: 0.1 g/órával kevesebb, mint a 7 napos tiszta átlag
-        var targetRate = Math.max(0.1, baselineRate - 0.1);
+        // Célráta: mindig -0.015 g/óra csökkentés
+        var targetRate = Math.max(0.05, baselineRate - 0.015);
 
         var currentTime = document.getElementById('time').value;
         var wakeVal = document.getElementById('wakeTime').value;
@@ -529,7 +551,9 @@
 
           if (baselineRate !== null && !isNaN(baselineRate) && baselineRate > 0) {
             rateYestEl.innerText = baselineRate.toFixed(2);
-            if (rateVal > baselineRate) {
+            // Ha a ráta a kívánt -0.015-ös cél felett van, pirosodik
+            var targetLimit = baselineRate - 0.015;
+            if (rateVal > targetLimit) {
               rateEl.style.color = '#ef5350';
               rateYestEl.style.color = '#ef5350';
             } else {
@@ -627,33 +651,30 @@
         });
       }
 
-      function onTableFieldChange(doseNum) {
-        var timeInput = document.getElementById('t_time_' + doseNum);
-        var amountInput = document.getElementById('t_amount_' + doseNum);
-
-        var newTime = timeInput ? timeInput.value.trim() : '';
-        var rawAmt = amountInput ? amountInput.value.trim() : '';
-        var newAmount = getParsedAmount(rawAmt);
-
-        if (newAmount > 0 && !newTime) {
-          return;
-        }
-
+      // KÉNYELMES ÉS BIZTONSÁGOS: AZ EGÉSZ TÁBLÁZAT EGY MENETBEN MENTŐDIK
+      function saveTableDoses() {
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
 
-        setStatus('#' + doseNum + ' mentése...', 'status-saving');
+        var dosesList = [];
+        for (var i = 1; i <= 8; i++) {
+          var tEl = document.getElementById('t_time_' + i);
+          var aEl = document.getElementById('t_amount_' + i);
+          var tVal = tEl ? tEl.value.trim() : '';
+          var aVal = aEl ? aEl.value.trim() : '';
+          dosesList.push({ time: tVal, amount: aVal });
+        }
+
+        setStatus('Táblázat mentése...', 'status-saving');
 
         callApi({
-          action: 'updateSingleDose',
+          action: 'saveAllTableDoses',
           sheetName: sheetName,
           dateStr: dateStr,
-          doseNumber: doseNum,
-          time: newTime,
-          amount: newAmount
+          dosesJson: JSON.stringify(dosesList)
         }, function(res) {
           if (res && res.success) {
-            setStatus('#' + doseNum + ' frissítve', 'status-success');
+            setStatus('Táblázat elmentve és rendezve', 'status-success');
             saveToLocalCache(sheetName, dateStr, res.stats);
             renderAllStats(res.stats);
             setTimeout(() => { setStatus('', 'status-idle'); }, 2000);
@@ -766,9 +787,6 @@
           <div class="stat-row"><span class="stat-label">Átlagos időköz</span><span class="stat-value">${data.avgInterval}</span></div>
         `;
 
-        var activeEl = document.activeElement;
-        var activeId = activeEl ? activeEl.id : null;
-
         var doses = data.allDoses || [];
         var tableHtml = `
           <table class="doses-table">
@@ -788,10 +806,10 @@
             <tr>
               <td style="color: #666; font-size: 11px; text-align: center;">${item.doseNumber}</td>
               <td>
-                <input type="time" id="t_time_${item.doseNumber}" class="table-input" value="${item.time}" onchange="onTableFieldChange(${item.doseNumber})">
+                <input type="time" id="t_time_${item.doseNumber}" class="table-input" value="${item.time}">
               </td>
               <td>
-                <input type="text" id="t_amount_${item.doseNumber}" class="table-input" inputmode="decimal" placeholder="0.00" value="${item.amount}" onchange="onTableFieldChange(${item.doseNumber})">
+                <input type="text" id="t_amount_${item.doseNumber}" class="table-input" inputmode="decimal" placeholder="0.00" value="${item.amount}">
               </td>
             </tr>
           `;
@@ -804,11 +822,6 @@
 
         document.getElementById('editableDosesContent').innerHTML = tableHtml;
 
-        if (activeId && document.getElementById(activeId)) {
-          document.getElementById(activeId).focus();
-        }
-
-        // 4. Automatizált intelligens dózisjavaslat betöltése
         applyDoseRecommendation(data);
       }
 
