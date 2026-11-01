@@ -9,7 +9,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#121212">
 
-    <!-- Diszkrét semleges ikon iPhone-ra -->
     <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='120' fill='%23181818'/%3E%3Ccircle cx='256' cy='256' r='160' fill='none' stroke='%23333333' stroke-width='28'/%3E%3Ccircle cx='256' cy='256' r='160' fill='none' stroke='%234a90e2' stroke-width='28' stroke-dasharray='700' stroke-dashoffset='220' stroke-linecap='round'/%3E%3Ccircle cx='256' cy='256' r='36' fill='%23ffffff'/%3E%3C/svg%3E">
 
     <style>
@@ -60,7 +59,6 @@
         outline: none;
       }
 
-      /* Letisztult gramm doboz */
       .dose-container {
         margin: 10px 0 6px 0;
         background: #181818;
@@ -90,7 +88,6 @@
         box-shadow: 0 0 10px rgba(255, 255, 255, 0.08);
       }
 
-      /* Mentés előtti élő statisztika doboz */
       .preview-box {
         display: none;
         margin-top: 10px;
@@ -122,7 +119,6 @@
       .status-success { color: #7cb342; }
       .status-error { color: #e57373; }
 
-      /* Statisztikai kártyák */
       .card {
         margin-top: 12px;
         background: #181818;
@@ -172,7 +168,6 @@
         padding: 8px 0;
       }
 
-      /* Szerkeszthető aznapi adagok táblázata */
       .doses-table {
         width: 100%;
         border-collapse: collapse;
@@ -211,7 +206,6 @@
   </head>
   <body>
 
-    <!-- Felső vezérlősor: Profil, Dátum, Ébredés, Időpont -->
     <div class="top-row">
       <div class="form-group" style="max-width: 75px;">
         <label for="sheetName">Profil</label>
@@ -234,7 +228,6 @@
       </div>
     </div>
 
-    <!-- Adag beviteli mező -->
     <form id="mainDoseForm" onsubmit="event.preventDefault(); autoSubmit();" class="dose-container">
       <input 
         type="text" 
@@ -248,7 +241,6 @@
         onkeydown="handleKey(event)"
         onblur="handleBlur()"
       >
-      <!-- Mentés előtti élő statisztika előnézet -->
       <div id="livePreviewBox" class="preview-box">
         <div class="preview-grid">
           <div>Össz: <span id="prevTotal" class="preview-item">-</span></div>
@@ -260,7 +252,6 @@
 
     <div id="statusMsg" class="status-idle">Kész</div>
 
-    <!-- 1. BLOKK: UTOLSÓ BEÍRT ADAG ADATAI -->
     <div class="card">
       <div class="card-header">
         <span>Legutóbbi tétel</span>
@@ -271,7 +262,6 @@
       </div>
     </div>
 
-    <!-- 2. BLOKK: NAPI ADATOK ÉS ÁTLAGOK -->
     <div class="card">
       <div class="card-header">
         <span>Napi adatok</span>
@@ -282,7 +272,6 @@
       </div>
     </div>
 
-    <!-- 3. BLOKK: KÖZVETLENÜL SZERKESZTHETŐ AZNAPI ADAGOK TÁBLÁZATA -->
     <div class="card">
       <div class="card-header">
         <span>Aznapi adagok szerkesztése</span>
@@ -293,11 +282,11 @@
     </div>
 
     <script>
-      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbygZVABWrMqSZ2JMCnCVqOwconHn3lyyNrSh3uzxEVx4R8qZDzZwXLGzyOqSHmu_PA/exec";
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwec55RLp8NAJePpNIet99T9J_kYyjATdwWAUdAv6LidM2YjlWpJ7IpyHd726XokIc/exec";
       var isSaving = false;
       var lastRecordedTimeStr = null;
       var currentStatsData = null;
-      var isUserModified = false; // Jelzi, ha a felhasználó kézzel átírta az értéket
+      var isUserModified = false;
 
       function callApi(params, onSuccess, onError) {
         const callbackName = 'jsonp_cb_' + Math.round(100000 * Math.random());
@@ -372,7 +361,6 @@
         setTimeout(function() {
           var rawVal = document.getElementById('amount').value.trim();
           var val = getParsedAmount(rawVal);
-          // Csak akkor mentünk automatikusan blur-re, ha a felhasználó kézzel belenyúlt
           if (val > 0 && !isSaving && isUserModified) {
             autoSubmit();
           }
@@ -385,7 +373,6 @@
       }
 
       function onTimeChange() {
-        // Ha változik az időpont, és még nem nyúlt hozzá a felhasználó, újraszámoljuk a javaslatot
         if (!isUserModified && currentStatsData) {
           applyDoseRecommendation(currentStatsData);
         } else {
@@ -400,11 +387,10 @@
         return isNaN(num) ? 0 : num;
       }
 
-      // OKOS ADAGJAVASLAT KISZÁMÍTÁSA (tegnapi ráta - 0.1 g/ó célhoz)
+      // JAVASLAT: 7 NAPOS SZŰRT BÁZISRÁTA ALAPJÁN
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
 
-        // 1. Hányadik adag jön most?
         var currentRecordedCount = 0;
         if (data.allDoses) {
           for (var d = 0; d < data.allDoses.length; d++) {
@@ -414,24 +400,21 @@
         var nextDoseNum = currentRecordedCount + 1;
         if (nextDoseNum > 8) return;
 
-        // 2. Tegnapi azonos sorszámú ráta lekérése
         var yMap = data.yesterdayRates;
-        var yestRate = null;
+        var baselineRate = null;
         if (yMap) {
           if (yMap[nextDoseNum] !== undefined) {
-            yestRate = parseFloat(yMap[nextDoseNum]);
+            baselineRate = parseFloat(yMap[nextDoseNum]);
           } else if (yMap[String(nextDoseNum)] !== undefined) {
-            yestRate = parseFloat(yMap[String(nextDoseNum)]);
+            baselineRate = parseFloat(yMap[String(nextDoseNum)]);
           }
         }
 
-        // Csak akkor számolunk, ha tegnap létezett ez az adag és volt érvényes rátája
-        if (!yestRate || isNaN(yestRate) || yestRate <= 0.1) return;
+        if (!baselineRate || isNaN(baselineRate) || baselineRate <= 0.1) return;
 
-        // 3. Célráta: pontosan 0.1 g/órával kevesebb, mint tegnap
-        var targetRate = Math.max(0.1, yestRate - 0.1);
+        // Cél: 0.1 g/órával kevesebb, mint a 7 napos tiszta átlag
+        var targetRate = Math.max(0.1, baselineRate - 0.1);
 
-        // 4. Ébren töltött órák a jelenlegi pillanathoz
         var currentTime = document.getElementById('time').value;
         var wakeVal = document.getElementById('wakeTime').value;
         var awakeHours = null;
@@ -456,10 +439,7 @@
 
         if (!awakeHours || awakeHours <= 0) return;
 
-        // 5. Eddigi összdózis ma
         var currentTotal = parseFloat(String(data.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
-
-        // 6. Szükséges gramm kiszámítása
         var neededDose = (targetRate * awakeHours) - currentTotal;
         if (neededDose > 0.1) {
           var recommended = parseFloat(neededDose.toFixed(2));
@@ -484,12 +464,10 @@
 
         previewBox.style.display = 'block';
 
-        // 1. Tervezett új napi összdózis
         var currentTotal = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
         var newTotal = currentTotal + amountVal;
         document.getElementById('prevTotal').innerText = newTotal.toFixed(2) + ' g';
 
-        // 2. Tervezett eltérés
         var last = currentStatsData.lastDose;
         if (last && last.amount) {
           var lastAmt = parseFloat(String(last.amount).replace(',', '.')) || 0;
@@ -500,7 +478,6 @@
           document.getElementById('prevDiff').innerText = '-';
         }
 
-        // 3. Fogyasztási ráta kiszámítása
         var currentTime = document.getElementById('time').value;
         var wakeVal = document.getElementById('wakeTime').value;
         var rateVal = null;
@@ -540,19 +517,19 @@
           }
           var nextDoseNum = currentRecordedCount + 1;
 
-          var yestRate = null;
+          var baselineRate = null;
           var yMap = currentStatsData.yesterdayRates;
           if (yMap) {
             if (yMap[nextDoseNum] !== undefined) {
-              yestRate = parseFloat(yMap[nextDoseNum]);
+              baselineRate = parseFloat(yMap[nextDoseNum]);
             } else if (yMap[String(nextDoseNum)] !== undefined) {
-              yestRate = parseFloat(yMap[String(nextDoseNum)]);
+              baselineRate = parseFloat(yMap[String(nextDoseNum)]);
             }
           }
 
-          if (yestRate !== null && !isNaN(yestRate) && yestRate > 0) {
-            rateYestEl.innerText = yestRate.toFixed(2);
-            if (rateVal > yestRate) {
+          if (baselineRate !== null && !isNaN(baselineRate) && baselineRate > 0) {
+            rateYestEl.innerText = baselineRate.toFixed(2);
+            if (rateVal > baselineRate) {
               rateEl.style.color = '#ef5350';
               rateYestEl.style.color = '#ef5350';
             } else {
@@ -757,7 +734,6 @@
           document.getElementById('wakeTime').value = data.wakeTime;
         }
 
-        // 1. Legutóbbi adag adatai
         var last = data.lastDose;
         var lastCard = document.getElementById('lastDoseStatsContent');
         var timeLabel = document.getElementById('lastDoseTimeLabel');
@@ -780,7 +756,6 @@
           updateLiveElapsedTime();
         }
 
-        // 2. Napi összegzés és átlagok
         document.getElementById('summaryStatsContent').innerHTML = `
           <div class="stat-row"><span class="stat-label">Napi összdózis</span><span class="stat-value">${data.dailyTotal}</span></div>
           <div class="stat-row"><span class="stat-label">Átlagos adag</span><span class="stat-value">${data.avgDose}</span></div>
@@ -791,7 +766,6 @@
           <div class="stat-row"><span class="stat-label">Átlagos időköz</span><span class="stat-value">${data.avgInterval}</span></div>
         `;
 
-        // 3. Szerkeszthető aznapi adagok táblázata
         var activeEl = document.activeElement;
         var activeId = activeEl ? activeEl.id : null;
 
@@ -834,7 +808,7 @@
           document.getElementById(activeId).focus();
         }
 
-        // 4. JAVASOLT DÓZIS AUTOMATIKUS KISZÁMÍTÁSA ÉS BEÍRÁSA
+        // 4. Automatizált intelligens dózisjavaslat betöltése
         applyDoseRecommendation(data);
       }
 
