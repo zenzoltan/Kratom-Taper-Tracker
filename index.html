@@ -139,21 +139,6 @@
         justify-content: space-between;
         align-items: center;
       }
-      .table-save-btn {
-        background: #2e7d32;
-        color: #ffffff;
-        border: none;
-        border-radius: 6px;
-        padding: 5px 12px;
-        font-size: 11px;
-        font-weight: 700;
-        text-transform: uppercase;
-        cursor: pointer;
-        letter-spacing: 0.5px;
-      }
-      .table-save-btn:active {
-        background: #1b5e20;
-      }
 
       .stat-row {
         display: flex;
@@ -292,11 +277,10 @@
       </div>
     </div>
 
-    <!-- 3. BLOKK: SZERKESZTHETŐ AZNAPI ADAGOK TÁBLÁZATA BIZTONSÁGOS MENTÉSSEL -->
+    <!-- 3. BLOKK: SZERKESZTHETŐ AZNAPI ADAGOK TÁBLÁZATA (CSENDES AUTOMATIKUS MENTÉSSEL) -->
     <div class="card">
       <div class="card-header">
         <span>Aznapi adagok</span>
-        <button type="button" class="table-save-btn" onclick="saveTableDoses()">Mentés</button>
       </div>
       <div id="editableDosesContent">
         <div class="loading">Betöltés...</div>
@@ -304,7 +288,7 @@
     </div>
 
     <script>
-      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxh_ye5_MhrFTcsWq_9LK3If1tAQqgHufOcdCkw0K4k8b4HF5TCuUzX-P2btKsJfcw/exec";
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzIBRLlvTMvOJ7GbiJ5wpl4OPp_tpDL13GcqZciif9OF1m832XhHFZ0wbUvAcqUH88/exec";
       var isSaving = false;
       var lastRecordedTimeStr = null;
       var currentStatsData = null;
@@ -409,7 +393,7 @@
         return isNaN(num) ? 0 : num;
       }
 
-      // Javaslat: pontosan -0.015 g/óra csökkentés a 7 napos szűrt bázishoz képest
+      // KORREKT ADAGJAVASLAT: HA MÁR MOST TÚLLÉPTED A CÉLT, NEGATÍV ÉRTÉKET ÍR KI PIROSSAL
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
 
@@ -419,6 +403,14 @@
             if (data.allDoses[d].hasData) currentRecordedCount++;
           }
         }
+
+        // Ha ma még egyetlen adag sem ment le (1. adag)
+        if (currentRecordedCount === 0) {
+          document.getElementById('amount').value = '3.60';
+          onTimeOrAmountInput();
+          return;
+        }
+
         var nextDoseNum = currentRecordedCount + 1;
         if (nextDoseNum > 8) return;
 
@@ -432,8 +424,11 @@
           }
         }
 
-        if (!baselineRate || isNaN(baselineRate) || baselineRate <= 0.05) return;
+        if (!baselineRate || isNaN(baselineRate) || baselineRate <= 0.05) {
+          baselineRate = 1.25;
+        }
 
+        // Taper célráta: -0.015 g/óra
         var targetRate = Math.max(0.05, baselineRate - 0.015);
 
         var currentTime = document.getElementById('time').value;
@@ -448,23 +443,24 @@
           var awakeMin = curM - wakeM;
           if (awakeMin <= 0) awakeMin += 1440;
           awakeHours = awakeMin / 60;
-        } else if (data.lastDose && data.lastDose.time && currentTime) {
-          var p1 = data.lastDose.time.split(':');
-          var p2 = currentTime.split(':');
-          var min1 = parseInt(p1[0], 10) * 60 + parseInt(p1[1], 10);
-          var min2 = parseInt(p2[0], 10) * 60 + parseInt(p2[1], 10);
-          var diffMin = min2 - min1;
-          if (diffMin <= 0) diffMin += 1440;
-          awakeHours = diffMin / 60;
         }
 
         if (!awakeHours || awakeHours <= 0) return;
 
         var currentTotal = parseFloat(String(data.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
-        var neededDose = (targetRate * awakeHours) - currentTotal;
-        if (neededDose > 0.1) {
-          var recommended = parseFloat(neededDose.toFixed(2));
-          document.getElementById('amount').value = recommended.toFixed(2);
+        var diffFromTarget = (targetRate * awakeHours) - currentTotal;
+
+        var amtInput = document.getElementById('amount');
+
+        if (diffFromTarget < 0) {
+          // TÚLLÉPVE A KERET: Kiírjuk a negatív számot pirossal (pl. -0.19 g)
+          amtInput.value = diffFromTarget.toFixed(2);
+          amtInput.style.color = '#ef5350';
+          onTimeOrAmountInput();
+        } else {
+          // NORMÁL ESET: Van megehető grammmennyiség
+          amtInput.value = diffFromTarget.toFixed(2);
+          amtInput.style.color = '#ffffff';
           onTimeOrAmountInput();
         }
       }
@@ -476,7 +472,10 @@
         var rateEl = document.getElementById('prevRate');
         var rateYestEl = document.getElementById('prevRateYest');
 
-        if (amountVal <= 0 || !currentStatsData) {
+        // Ha negatív szám van a mezőben (túllépés)
+        var isNegative = String(raw).trim().startsWith('-');
+
+        if ((amountVal === 0 && !isNegative) || !currentStatsData) {
           previewBox.style.display = 'none';
           rateEl.style.color = '#a5d6a7';
           rateYestEl.innerText = '';
@@ -486,11 +485,11 @@
         previewBox.style.display = 'block';
 
         var currentTotal = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
-        var newTotal = currentTotal + amountVal;
+        var newTotal = isNegative ? currentTotal : (currentTotal + amountVal);
         document.getElementById('prevTotal').innerText = newTotal.toFixed(2) + ' g';
 
         var last = currentStatsData.lastDose;
-        if (last && last.amount) {
+        if (last && last.amount && !isNegative) {
           var lastAmt = parseFloat(String(last.amount).replace(',', '.')) || 0;
           var diff = (amountVal - lastAmt).toFixed(2);
           var sign = diff > 0 ? '+' : '';
@@ -513,17 +512,6 @@
           var awakeHours = awakeMin / 60;
           if (awakeHours > 0) {
             rateVal = parseFloat((newTotal / awakeHours).toFixed(2));
-          }
-        } else if (last && last.time && currentTime) {
-          var p1 = last.time.split(':');
-          var p2 = currentTime.split(':');
-          var min1 = parseInt(p1[0], 10) * 60 + parseInt(p1[1], 10);
-          var min2 = parseInt(p2[0], 10) * 60 + parseInt(p2[1], 10);
-          var diffMin = min2 - min1;
-          if (diffMin <= 0) diffMin += 1440;
-          var hours = diffMin / 60;
-          if (hours > 0) {
-            rateVal = parseFloat((amountVal / hours).toFixed(2));
           }
         }
 
@@ -550,11 +538,7 @@
 
           if (baselineRate !== null && !isNaN(baselineRate) && baselineRate > 0) {
             rateYestEl.innerText = baselineRate.toFixed(2);
-            
-            // PONTOS ÖSSZEHASONLÍTÁS:
-            // Ha akár 0.01-gyel is kevesebb vagy egyenlő -> ZÖLD
-            // Ha több -> PIROS
-            if (rateVal > baselineRate) {
+            if (rateVal > baselineRate || isNegative) {
               rateEl.style.color = '#ef5350';
               rateYestEl.style.color = '#ef5350';
             } else {
@@ -599,11 +583,19 @@
         if (isSaving) return;
 
         var amountInput = document.getElementById('amount');
-        var amountVal = getParsedAmount(amountInput.value);
+        var rawVal = amountInput.value.trim();
 
+        // Ha negatív érték van a mezőben, nem engedjük elmenteni új adagként!
+        if (rawVal.startsWith('-')) {
+          setStatus('Várj még az evéssel!', 'status-error');
+          setTimeout(() => { setStatus('', 'status-idle'); }, 2500);
+          return;
+        }
+
+        var amountVal = getParsedAmount(rawVal);
         if (amountVal <= 0) return;
 
-        var cleanAmountString = String(amountInput.value).replace(',', '.').trim();
+        var cleanAmountString = String(amountVal).replace(',', '.');
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
         var time = document.getElementById('time').value;
@@ -625,6 +617,7 @@
             setStatus(amountVal + ' g rögzítve', 'status-success');
             amountInput.disabled = false;
             amountInput.value = '';
+            amountInput.style.color = '#ffffff';
             isUserModified = false;
             document.getElementById('livePreviewBox').style.display = 'none';
             isSaving = false;
@@ -637,7 +630,7 @@
             }
             focusAmount();
 
-            setTimeout(() => { if (!isSaving) setStatus('', 'status-idle'); }, 2500);
+            setTimeout(() => { if (!isSaving) setStatus('', 'status-idle'); }, 2000);
           } else {
             setStatus('Hiba: ' + (res && res.error ? res.error : 'Ismeretlen hiba'), 'status-error');
             amountInput.disabled = false;
@@ -652,32 +645,34 @@
         });
       }
 
-      function saveTableDoses() {
+      // CSENDES, ELUGRÁSMENTES AUTOMATIKUS MENTÉS AZ ALSÓ TÁBLÁZATBÓL
+      function onTableFieldSilentChange(doseNum) {
+        var tEl = document.getElementById('t_time_' + doseNum);
+        var aEl = document.getElementById('t_amount_' + doseNum);
+
+        var timeVal = tEl ? tEl.value.trim() : '';
+        var amtVal = aEl ? aEl.value.trim() : '';
+        var cleanAmt = getParsedAmount(amtVal);
+
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
 
-        var dosesList = [];
-        for (var i = 1; i <= 8; i++) {
-          var tEl = document.getElementById('t_time_' + i);
-          var aEl = document.getElementById('t_amount_' + i);
-          var tVal = tEl ? tEl.value.trim() : '';
-          var aVal = aEl ? aEl.value.trim() : '';
-          dosesList.push({ time: tVal, amount: aVal });
-        }
-
-        setStatus('Táblázat mentése...', 'status-saving');
+        setStatus('#' + doseNum + ' szinkronizálása...', 'status-saving');
 
         callApi({
-          action: 'saveAllTableDoses',
+          action: 'saveSingleDoseSilent',
           sheetName: sheetName,
           dateStr: dateStr,
-          dosesJson: JSON.stringify(dosesList)
+          doseNumber: doseNum,
+          time: timeVal,
+          amount: cleanAmt
         }, function(res) {
           if (res && res.success) {
-            setStatus('Táblázat elmentve és rendezve', 'status-success');
+            setStatus('Mentve ✓', 'status-success');
             saveToLocalCache(sheetName, dateStr, res.stats);
-            renderAllStats(res.stats);
-            setTimeout(() => { setStatus('', 'status-idle'); }, 2000);
+            // Csak a felső kártyákat frissítjük, az alsó táblázat DOM-ját NEM bántjuk!
+            updateUpperCardsOnly(res.stats);
+            setTimeout(() => { setStatus('', 'status-idle'); }, 1500);
           }
         }, function(err) {
           setStatus('Hiba: ' + err.message, 'status-error');
@@ -748,13 +743,8 @@
         });
       }
 
-      function renderAllStats(data) {
+      function updateUpperCardsOnly(data) {
         currentStatsData = data;
-
-        if (data.wakeTime) {
-          document.getElementById('wakeTime').value = data.wakeTime;
-        }
-
         var last = data.lastDose;
         var lastCard = document.getElementById('lastDoseStatsContent');
         var timeLabel = document.getElementById('lastDoseTimeLabel');
@@ -773,7 +763,6 @@
             <div class="stat-row"><span class="stat-label">Eltérés az előző adaghoz</span><span class="stat-value">${last.diff}</span></div>
             <div class="stat-row"><span class="stat-label">Fogyasztási ráta</span><span class="stat-value">${last.rate}</span></div>
           `;
-
           updateLiveElapsedTime();
         }
 
@@ -786,6 +775,14 @@
           <div class="stat-row"><span class="stat-label">Adagok száma</span><span class="stat-value">${data.totalDoses}</span></div>
           <div class="stat-row"><span class="stat-label">Átlagos időköz</span><span class="stat-value">${data.avgInterval}</span></div>
         `;
+      }
+
+      function renderAllStats(data) {
+        updateUpperCardsOnly(data);
+
+        if (data.wakeTime) {
+          document.getElementById('wakeTime').value = data.wakeTime;
+        }
 
         var doses = data.allDoses || [];
         var tableHtml = `
@@ -806,10 +803,10 @@
             <tr>
               <td style="color: #666; font-size: 11px; text-align: center;">${item.doseNumber}</td>
               <td>
-                <input type="time" id="t_time_${item.doseNumber}" class="table-input" value="${item.time}">
+                <input type="time" id="t_time_${item.doseNumber}" class="table-input" value="${item.time}" onchange="onTableFieldSilentChange(${item.doseNumber})">
               </td>
               <td>
-                <input type="text" id="t_amount_${item.doseNumber}" class="table-input" inputmode="decimal" placeholder="0.00" value="${item.amount}">
+                <input type="text" id="t_amount_${item.doseNumber}" class="table-input" inputmode="decimal" placeholder="0.00" value="${item.amount}" onchange="onTableFieldSilentChange(${item.doseNumber})">
               </td>
             </tr>
           `;
@@ -821,7 +818,6 @@
         `;
 
         document.getElementById('editableDosesContent').innerHTML = tableHtml;
-
         applyDoseRecommendation(data);
       }
 
