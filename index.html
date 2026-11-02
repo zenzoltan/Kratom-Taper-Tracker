@@ -244,11 +244,12 @@
         onkeydown="handleKey(event)"
         onblur="handleBlur()"
       >
+      <!-- Mentés előtti élő statisztika előnézet -->
       <div id="livePreviewBox" class="preview-box">
         <div class="preview-grid">
           <div>Össz: <span id="prevTotal" class="preview-item">-</span></div>
           <div>Eltérés: <span id="prevDiff" class="preview-item">-</span></div>
-          <div>Ráta: <span id="prevRate" class="preview-item">-</span> <span id="prevRateYest" style="font-size: 12px; font-weight: 600;"></span></div>
+          <div>Ráta: <span id="prevRateDisplay" class="preview-item">-</span></div>
         </div>
       </div>
     </form>
@@ -277,7 +278,7 @@
       </div>
     </div>
 
-    <!-- 3. BLOKK: SZERKESZTHETŐ AZNAPI ADAGOK TÁBLÁZATA (CSENDES AUTOMATIKUS MENTÉSSEL) -->
+    <!-- 3. BLOKK: SZERKESZTHETŐ AZNAPI ADAGOK TÁBLÁZATA -->
     <div class="card">
       <div class="card-header">
         <span>Aznapi adagok</span>
@@ -288,7 +289,7 @@
     </div>
 
     <script>
-      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzIBRLlvTMvOJ7GbiJ5wpl4OPp_tpDL13GcqZciif9OF1m832XhHFZ0wbUvAcqUH88/exec";
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzXelm-CZeYiE4Xp-8hdEjhhcepNQvqIRRy5rL1RxsdypwxLye4spdCRfFzwK4elAY/exec";
       var isSaving = false;
       var lastRecordedTimeStr = null;
       var currentStatsData = null;
@@ -393,7 +394,7 @@
         return isNaN(num) ? 0 : num;
       }
 
-      // KORREKT ADAGJAVASLAT: HA MÁR MOST TÚLLÉPTED A CÉLT, NEGATÍV ÉRTÉKET ÍR KI PIROSSAL
+      // JAVASOLT DÓZIS KISZÁMÍTÁSA (Pontosan 0.02 g/órával kevesebb, mint a 10 napos szűrt bázisráta)
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
 
@@ -404,7 +405,7 @@
           }
         }
 
-        // Ha ma még egyetlen adag sem ment le (1. adag)
+        // Első dózis alapértelmezett értéke
         if (currentRecordedCount === 0) {
           document.getElementById('amount').value = '3.60';
           onTimeOrAmountInput();
@@ -425,11 +426,11 @@
         }
 
         if (!baselineRate || isNaN(baselineRate) || baselineRate <= 0.05) {
-          baselineRate = 1.25;
+          baselineRate = 1.30;
         }
 
-        // Taper célráta: -0.015 g/óra
-        var targetRate = Math.max(0.05, baselineRate - 0.015);
+        // Célráta: pontosan 0.02 g/órával kevesebb, mint a 10 napos átlag
+        var targetRate = Math.max(0.05, baselineRate - 0.02);
 
         var currentTime = document.getElementById('time').value;
         var wakeVal = document.getElementById('wakeTime').value;
@@ -453,41 +454,39 @@
         var amtInput = document.getElementById('amount');
 
         if (diffFromTarget < 0) {
-          // TÚLLÉPVE A KERET: Kiírjuk a negatív számot pirossal (pl. -0.19 g)
+          // Ha már most a keret felett vagyunk, negatív számot írunk ki
           amtInput.value = diffFromTarget.toFixed(2);
           amtInput.style.color = '#ef5350';
           onTimeOrAmountInput();
         } else {
-          // NORMÁL ESET: Van megehető grammmennyiség
           amtInput.value = diffFromTarget.toFixed(2);
           amtInput.style.color = '#ffffff';
           onTimeOrAmountInput();
         }
       }
 
+      // ÉLŐ STATISZTIKA: "1.28 / 1.30 g/ó" MEGJELENÍTÉSE ZÖLD/PIROS SZÍNEZÉSSEL
       function onTimeOrAmountInput() {
         var raw = document.getElementById('amount').value;
         var amountVal = getParsedAmount(raw);
         var previewBox = document.getElementById('livePreviewBox');
-        var rateEl = document.getElementById('prevRate');
-        var rateYestEl = document.getElementById('prevRateYest');
+        var rateDisplayEl = document.getElementById('prevRateDisplay');
 
-        // Ha negatív szám van a mezőben (túllépés)
         var isNegative = String(raw).trim().startsWith('-');
 
         if ((amountVal === 0 && !isNegative) || !currentStatsData) {
           previewBox.style.display = 'none';
-          rateEl.style.color = '#a5d6a7';
-          rateYestEl.innerText = '';
           return;
         }
 
         previewBox.style.display = 'block';
 
+        // 1. Új összdózis
         var currentTotal = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
         var newTotal = isNegative ? currentTotal : (currentTotal + amountVal);
         document.getElementById('prevTotal').innerText = newTotal.toFixed(2) + ' g';
 
+        // 2. Új eltérés
         var last = currentStatsData.lastDose;
         if (last && last.amount && !isNegative) {
           var lastAmt = parseFloat(String(last.amount).replace(',', '.')) || 0;
@@ -498,6 +497,7 @@
           document.getElementById('prevDiff').innerText = '-';
         }
 
+        // 3. Fogyasztási ráta kiszámítása (Összdózis / Ébren töltött órák)
         var currentTime = document.getElementById('time').value;
         var wakeVal = document.getElementById('wakeTime').value;
         var rateVal = null;
@@ -516,8 +516,7 @@
         }
 
         if (rateVal !== null && !isNaN(rateVal)) {
-          rateEl.innerText = rateVal.toFixed(2) + ' g/ó';
-
+          // Hányadik dózis készül rögzülni?
           var currentRecordedCount = 0;
           if (currentStatsData.allDoses) {
             for (var d = 0; d < currentStatsData.allDoses.length; d++) {
@@ -526,6 +525,7 @@
           }
           var nextDoseNum = currentRecordedCount + 1;
 
+          // 10 napos szűrt bázisráta kinyerése
           var baselineRate = null;
           var yMap = currentStatsData.yesterdayRates;
           if (yMap) {
@@ -537,22 +537,20 @@
           }
 
           if (baselineRate !== null && !isNaN(baselineRate) && baselineRate > 0) {
-            rateYestEl.innerText = baselineRate.toFixed(2);
-            if (rateVal > baselineRate || isNegative) {
-              rateEl.style.color = '#ef5350';
-              rateYestEl.style.color = '#ef5350';
+            var baseFormatted = baselineRate.toFixed(2);
+            var currentFormatted = rateVal.toFixed(2);
+
+            // Ha kevesebb vagy egyenlő -> ZÖLD, ha több -> PIROS
+            if (rateVal <= baselineRate && !isNegative) {
+              rateDisplayEl.innerHTML = `<span style="color: #81c784;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #81c784;">${baseFormatted} g/ó</span>`;
             } else {
-              rateEl.style.color = '#81c784';
-              rateYestEl.style.color = '#81c784';
+              rateDisplayEl.innerHTML = `<span style="color: #ef5350;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #888;">${baseFormatted} g/ó</span>`;
             }
           } else {
-            rateEl.style.color = '#a5d6a7';
-            rateYestEl.innerText = '';
+            rateDisplayEl.innerHTML = `<span style="color: #a5d6a7;">${rateVal.toFixed(2)} g/ó</span>`;
           }
         } else {
-          rateEl.innerText = '-';
-          rateEl.style.color = '#a5d6a7';
-          rateYestEl.innerText = '';
+          rateDisplayEl.innerText = '-';
         }
       }
 
@@ -585,7 +583,6 @@
         var amountInput = document.getElementById('amount');
         var rawVal = amountInput.value.trim();
 
-        // Ha negatív érték van a mezőben, nem engedjük elmenteni új adagként!
         if (rawVal.startsWith('-')) {
           setStatus('Várj még az evéssel!', 'status-error');
           setTimeout(() => { setStatus('', 'status-idle'); }, 2500);
@@ -645,7 +642,6 @@
         });
       }
 
-      // CSENDES, ELUGRÁSMENTES AUTOMATIKUS MENTÉS AZ ALSÓ TÁBLÁZATBÓL
       function onTableFieldSilentChange(doseNum) {
         var tEl = document.getElementById('t_time_' + doseNum);
         var aEl = document.getElementById('t_amount_' + doseNum);
@@ -670,7 +666,6 @@
           if (res && res.success) {
             setStatus('Mentve ✓', 'status-success');
             saveToLocalCache(sheetName, dateStr, res.stats);
-            // Csak a felső kártyákat frissítjük, az alsó táblázat DOM-ját NEM bántjuk!
             updateUpperCardsOnly(res.stats);
             setTimeout(() => { setStatus('', 'status-idle'); }, 1500);
           }
@@ -852,4 +847,4 @@
       }
     </script>
   </body>
-</html>
+</html> 
