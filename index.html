@@ -244,7 +244,7 @@
         onkeydown="handleKey(event)"
         onblur="handleBlur()"
       >
-      <!-- Mentés előtti élő statisztika előnézet -->
+      <!-- Mentés előtti élő statisztika előnézet: "1.28 / 1.30 g/ó" -->
       <div id="livePreviewBox" class="preview-box">
         <div class="preview-grid">
           <div>Össz: <span id="prevTotal" class="preview-item">-</span></div>
@@ -278,7 +278,7 @@
       </div>
     </div>
 
-    <!-- 3. BLOKK: SZERKESZTHETŐ AZNAPI ADAGOK TÁBLÁZATA -->
+    <!-- 3. BLOKK: SZERKESZTHETŐ AZNAPI ADAGOK TÁBLÁZATA (CSENDES AUTOMATIKUS MENTÉSSEL) -->
     <div class="card">
       <div class="card-header">
         <span>Aznapi adagok</span>
@@ -289,7 +289,7 @@
     </div>
 
     <script>
-      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzXelm-CZeYiE4Xp-8hdEjhhcepNQvqIRRy5rL1RxsdypwxLye4spdCRfFzwK4elAY/exec";
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz_7qOZAOTHREFoHwA1yrJqiGRepi97mbTAd2o7EEgHvWa6XyplHSaVS3kT7qZZc6Q/exec";
       var isSaving = false;
       var lastRecordedTimeStr = null;
       var currentStatsData = null;
@@ -394,7 +394,34 @@
         return isNaN(num) ? 0 : num;
       }
 
-      // JAVASOLT DÓZIS KISZÁMÍTÁSA (Pontosan 0.02 g/órával kevesebb, mint a 10 napos szűrt bázisráta)
+      // KISZÁMOLJA AZ ADOTT DÓZIS IDŐKÖZÉT ÓRÁBAN
+      function getIntervalHoursToNow(data) {
+        var currentTime = document.getElementById('time').value;
+        if (!currentTime) return null;
+
+        var last = data.lastDose;
+        var prevTime = null;
+
+        if (last && last.time) {
+          prevTime = last.time;
+        } else {
+          // Ha ez az 1. dózis, az ébredési időtől számolunk
+          prevTime = document.getElementById('wakeTime').value;
+        }
+
+        if (!prevTime) return null;
+
+        var p1 = prevTime.split(':');
+        var p2 = currentTime.split(':');
+        var min1 = parseInt(p1[0], 10) * 60 + parseInt(p1[1], 10);
+        var min2 = parseInt(p2[0], 10) * 60 + parseInt(p2[1], 10);
+        var diffMin = min2 - min1;
+        if (diffMin <= 0) diffMin += 1440; // éjfélen átnyúlás
+
+        return diffMin / 60;
+      }
+
+      // PONTOS DÓZISJAVASLAT: (10 napos átlag - 0.02) * eltelt órák
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
 
@@ -404,91 +431,52 @@
             if (data.allDoses[d].hasData) currentRecordedCount++;
           }
         }
-
-        // Első dózis alapértelmezett értéke
-        if (currentRecordedCount === 0) {
-          document.getElementById('amount').value = '3.60';
-          onTimeOrAmountInput();
-          return;
-        }
-
         var nextDoseNum = currentRecordedCount + 1;
         if (nextDoseNum > 8) return;
 
         var yMap = data.yesterdayRates;
-        var baselineRate = null;
-        if (yMap) {
-          if (yMap[nextDoseNum] !== undefined) {
-            baselineRate = parseFloat(yMap[nextDoseNum]);
-          } else if (yMap[String(nextDoseNum)] !== undefined) {
-            baselineRate = parseFloat(yMap[String(nextDoseNum)]);
-          }
-        }
+        var baselineRate = (yMap && yMap[nextDoseNum] !== undefined) ? parseFloat(yMap[nextDoseNum]) : 1.30;
 
-        if (!baselineRate || isNaN(baselineRate) || baselineRate <= 0.05) {
-          baselineRate = 1.30;
-        }
+        // Célráta: pontosan 0.02-vel kevesebb, mint a 10 napos átlag!
+        var targetRate = Math.max(0.1, baselineRate - 0.02);
 
-        // Célráta: pontosan 0.02 g/órával kevesebb, mint a 10 napos átlag
-        var targetRate = Math.max(0.05, baselineRate - 0.02);
+        var intervalHours = getIntervalHoursToNow(data);
+        if (!intervalHours || intervalHours <= 0) return;
 
-        var currentTime = document.getElementById('time').value;
-        var wakeVal = document.getElementById('wakeTime').value;
-        var awakeHours = null;
+        // Az adag nagysága: Célráta * Időköz
+        var neededDose = targetRate * intervalHours;
 
-        if (wakeVal && currentTime) {
-          var wp = wakeVal.split(':');
-          var cp = currentTime.split(':');
-          var wakeM = parseInt(wp[0], 10) * 60 + parseInt(wp[1], 10);
-          var curM = parseInt(cp[0], 10) * 60 + parseInt(cp[1], 10);
-          var awakeMin = curM - wakeM;
-          if (awakeMin <= 0) awakeMin += 1440;
-          awakeHours = awakeMin / 60;
-        }
-
-        if (!awakeHours || awakeHours <= 0) return;
-
-        var currentTotal = parseFloat(String(data.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
-        var diffFromTarget = (targetRate * awakeHours) - currentTotal;
-
-        var amtInput = document.getElementById('amount');
-
-        if (diffFromTarget < 0) {
-          // Ha már most a keret felett vagyunk, negatív számot írunk ki
-          amtInput.value = diffFromTarget.toFixed(2);
-          amtInput.style.color = '#ef5350';
-          onTimeOrAmountInput();
-        } else {
-          amtInput.value = diffFromTarget.toFixed(2);
-          amtInput.style.color = '#ffffff';
+        if (neededDose > 0.1) {
+          // Észszerű határok között tartjuk (max 3.8g)
+          var recommended = Math.min(3.80, neededDose);
+          document.getElementById('amount').value = recommended.toFixed(2);
+          document.getElementById('amount').style.color = '#ffffff';
           onTimeOrAmountInput();
         }
       }
 
-      // ÉLŐ STATISZTIKA: "1.28 / 1.30 g/ó" MEGJELENÍTÉSE ZÖLD/PIROS SZÍNEZÉSSEL
+      // ÉLŐ RÁTASZÁMÍTÁS ÉS ÖSSZEHASONLÍTÁS (1.28 / 1.30 g/ó)
       function onTimeOrAmountInput() {
         var raw = document.getElementById('amount').value;
         var amountVal = getParsedAmount(raw);
         var previewBox = document.getElementById('livePreviewBox');
         var rateDisplayEl = document.getElementById('prevRateDisplay');
 
-        var isNegative = String(raw).trim().startsWith('-');
-
-        if ((amountVal === 0 && !isNegative) || !currentStatsData) {
+        if (amountVal <= 0 || !currentStatsData) {
           previewBox.style.display = 'none';
           return;
         }
 
         previewBox.style.display = 'block';
 
-        // 1. Új összdózis
+        // 1. Tervezett új összdózis
         var currentTotal = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
-        var newTotal = isNegative ? currentTotal : (currentTotal + amountVal);
+        var newTotal = currentTotal + amountVal;
         document.getElementById('prevTotal').innerText = newTotal.toFixed(2) + ' g';
 
-        // 2. Új eltérés
+        // 2. Tervezett eltérés az előző adaghoz
         var last = currentStatsData.lastDose;
-        if (last && last.amount && !isNegative) {
+        if (last && last.amount) {
           var lastAmt = parseFloat(String(last.amount).replace(',', '.')) || 0;
           var diff = (amountVal - lastAmt).toFixed(2);
           var sign = diff > 0 ? '+' : '';
@@ -497,26 +485,15 @@
           document.getElementById('prevDiff').innerText = '-';
         }
 
-        // 3. Fogyasztási ráta kiszámítása (Összdózis / Ébren töltött órák)
-        var currentTime = document.getElementById('time').value;
-        var wakeVal = document.getElementById('wakeTime').value;
-        var rateVal = null;
+        // 3. A sor saját fogyasztási rátája (Adag / Időköz) a táblázat H oszlopa szerint!
+        var intervalHours = getIntervalHoursToNow(currentStatsData);
+        var currentDoseRate = null;
 
-        if (wakeVal && currentTime) {
-          var wp = wakeVal.split(':');
-          var cp = currentTime.split(':');
-          var wakeM = parseInt(wp[0], 10) * 60 + parseInt(wp[1], 10);
-          var curM = parseInt(cp[0], 10) * 60 + parseInt(cp[1], 10);
-          var awakeMin = curM - wakeM;
-          if (awakeMin <= 0) awakeMin += 1440;
-          var awakeHours = awakeMin / 60;
-          if (awakeHours > 0) {
-            rateVal = parseFloat((newTotal / awakeHours).toFixed(2));
-          }
+        if (intervalHours && intervalHours > 0) {
+          currentDoseRate = parseFloat((amountVal / intervalHours).toFixed(2));
         }
 
-        if (rateVal !== null && !isNaN(rateVal)) {
-          // Hányadik dózis készül rögzülni?
+        if (currentDoseRate !== null && !isNaN(currentDoseRate)) {
           var currentRecordedCount = 0;
           if (currentStatsData.allDoses) {
             for (var d = 0; d < currentStatsData.allDoses.length; d++) {
@@ -525,7 +502,6 @@
           }
           var nextDoseNum = currentRecordedCount + 1;
 
-          // 10 napos szűrt bázisráta kinyerése
           var baselineRate = null;
           var yMap = currentStatsData.yesterdayRates;
           if (yMap) {
@@ -538,16 +514,16 @@
 
           if (baselineRate !== null && !isNaN(baselineRate) && baselineRate > 0) {
             var baseFormatted = baselineRate.toFixed(2);
-            var currentFormatted = rateVal.toFixed(2);
+            var currentFormatted = currentDoseRate.toFixed(2);
 
-            // Ha kevesebb vagy egyenlő -> ZÖLD, ha több -> PIROS
-            if (rateVal <= baselineRate && !isNegative) {
+            // Ha kevesebb vagy egyenlő a 10 napos átlagnál -> ZÖLD, ha több -> PIROS
+            if (currentDoseRate <= baselineRate) {
               rateDisplayEl.innerHTML = `<span style="color: #81c784;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #81c784;">${baseFormatted} g/ó</span>`;
             } else {
               rateDisplayEl.innerHTML = `<span style="color: #ef5350;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #888;">${baseFormatted} g/ó</span>`;
             }
           } else {
-            rateDisplayEl.innerHTML = `<span style="color: #a5d6a7;">${rateVal.toFixed(2)} g/ó</span>`;
+            rateDisplayEl.innerHTML = `<span style="color: #a5d6a7;">${currentDoseRate.toFixed(2)} g/ó</span>`;
           }
         } else {
           rateDisplayEl.innerText = '-';
@@ -581,15 +557,8 @@
         if (isSaving) return;
 
         var amountInput = document.getElementById('amount');
-        var rawVal = amountInput.value.trim();
+        var amountVal = getParsedAmount(amountInput.value);
 
-        if (rawVal.startsWith('-')) {
-          setStatus('Várj még az evéssel!', 'status-error');
-          setTimeout(() => { setStatus('', 'status-idle'); }, 2500);
-          return;
-        }
-
-        var amountVal = getParsedAmount(rawVal);
         if (amountVal <= 0) return;
 
         var cleanAmountString = String(amountVal).replace(',', '.');
@@ -847,4 +816,4 @@
       }
     </script>
   </body>
-</html> 
+</html>
