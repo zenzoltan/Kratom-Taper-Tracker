@@ -30,7 +30,7 @@
       .top-row {
         display: flex;
         gap: 6px;
-        margin-bottom: 12px;
+        margin-bottom: 8px;
       }
       .form-group {
         flex: 1;
@@ -57,6 +57,35 @@
       input:focus, select:focus {
         border-color: #555;
         outline: none;
+      }
+
+      /* Kori napválasztó kapcsoló (Itthon vs Dolgozós) */
+      .day-type-container {
+        display: none; /* Alapból rejtve, csak Kori profilnál jelenik meg! */
+        margin-bottom: 12px;
+        background: #181818;
+        border: 1px solid #262626;
+        border-radius: 8px;
+        padding: 4px;
+        display: flex;
+        gap: 4px;
+      }
+      .day-type-btn {
+        flex: 1;
+        padding: 7px 10px;
+        background: transparent;
+        color: #888;
+        border: none;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .day-type-btn.active {
+        background: #2a2a2a;
+        color: #64b5f6;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.4);
       }
 
       .dose-container {
@@ -170,7 +199,6 @@
         padding: 8px 0;
       }
 
-      /* Tiszta szerkesztő táblázat fejléc nélkül */
       .doses-table {
         width: 100%;
         border-collapse: collapse;
@@ -241,7 +269,13 @@
       </div>
     </div>
 
-    <!-- Fő beviteli mező automatikus vesszőkiegészítéssel (pl. 215 -> 2,15) -->
+    <!-- Nap jellege választó sáv (Korinál aktív) -->
+    <div id="dayTypeContainer" class="day-type-container">
+      <button type="button" id="btnItthon" class="day-type-btn active" onclick="setDayType('Itthon')">🏠 Itthon</button>
+      <button type="button" id="btnDolgozos" class="day-type-btn" onclick="setDayType('Dolgozós')">💼 Dolgozós</button>
+    </div>
+
+    <!-- Fő beviteli mező -->
     <form id="mainDoseForm" onsubmit="event.preventDefault(); autoSubmit();" class="dose-container">
       <input 
         type="text" 
@@ -300,13 +334,13 @@
     </div>
 
     <script>
-      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyoKf3sNyVduYSrkH2HJkPUefWYJJDBoPjkir5FJpa-LtMXJyGWUC2rXJ9fBuXIWmY/exec";
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwHYtdv9pe37k_Db6qnru9Pps4lctL_lyM4uFjJIwev5DelqR79V176p_kchuJBfLA/exec";
       var isSaving = false;
       var lastRecordedTimeStr = null;
       var currentStatsData = null;
       var isUserModified = false;
+      var activeDayType = 'Itthon';
 
-      // Intelligens időformázó: pl. "1020" -> "10:20"
       function formatTimeInput(el) {
         var val = el.value.replace(/[^0-9]/g, '');
         if (val.length >= 3) {
@@ -337,25 +371,20 @@
         onWakeTimeChange();
       }
 
-      // Intelligens grammformázó: pl. "215" -> "2,15", "3" -> "3", "35" -> "3,5"
       function formatAmountInput(el) {
         var raw = el.value;
-        // Ha negatív előjel van, megtartjuk
         var isNeg = raw.startsWith('-');
         var digits = raw.replace(/[^0-9]/g, '');
         if (!digits) {
           el.value = isNeg ? '-' : '';
           return;
         }
-
         var formatted = '';
         if (digits.length === 1) {
           formatted = digits;
         } else {
-          // Az 1. számjegy után automatikusan beillesztjük a vesszőt
           formatted = digits.substring(0, 1) + ',' + digits.substring(1, 3);
         }
-
         el.value = (isNeg ? '-' : '') + formatted;
       }
 
@@ -385,6 +414,7 @@
         var savedProfile = localStorage.getItem('taper_active_profile') || 'Kori';
         document.getElementById('sheetName').value = savedProfile;
 
+        updateDayTypeVisibility(savedProfile);
         resetDateTime();
         loadStats();
         focusAmount();
@@ -392,16 +422,53 @@
         setInterval(updateLiveElapsedTime, 30000);
       };
 
+      function updateDayTypeVisibility(profile) {
+        var container = document.getElementById('dayTypeContainer');
+        if (profile === 'Kori') {
+          container.style.display = 'flex';
+        } else {
+          container.style.display = 'none';
+        }
+      }
+
       function onProfileChange() {
         var profile = document.getElementById('sheetName').value;
         localStorage.setItem('taper_active_profile', profile);
         
+        updateDayTypeVisibility(profile);
+
         currentStatsData = null;
         isUserModified = false;
         document.getElementById('livePreviewBox').style.display = 'none';
         document.getElementById('amount').value = '';
 
         loadStats();
+      }
+
+      function setDayType(type) {
+        activeDayType = type;
+        document.getElementById('btnItthon').className = 'day-type-btn' + (type === 'Itthon' ? ' active' : '');
+        document.getElementById('btnDolgozos').className = 'day-type-btn' + (type === 'Dolgozós' ? ' active' : '');
+
+        var sheetName = document.getElementById('sheetName').value;
+        var dateStr = document.getElementById('doseDate').value;
+
+        setStatus(type + ' nap beállítása...', 'status-saving');
+        callApi({
+          action: 'saveDayType',
+          sheetName: sheetName,
+          dateStr: dateStr,
+          dayType: type
+        }, function(res) {
+          if (res && res.success) {
+            setStatus('Nap jellege elmentve ✓', 'status-success');
+            saveToLocalCache(sheetName, dateStr, res.stats);
+            renderAllStats(res.stats);
+            setTimeout(() => { setStatus('', 'status-idle'); }, 1500);
+          }
+        }, function(err) {
+          setStatus('Hiba: ' + err.message, 'status-error');
+        });
       }
 
       function focusAmount() {
@@ -483,7 +550,6 @@
         return diffMin / 60;
       }
 
-      // Javaslat: pontosan -0.023 g/ó a 10 napos szűrt bázishoz képest
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
 
@@ -633,7 +699,8 @@
           dateStr: dateStr,
           time: time,
           amount: cleanAmountString,
-          wakeTime: wakeTime
+          wakeTime: wakeTime,
+          dayType: sheetName === 'Kori' ? activeDayType : ''
         }, function(res) {
           if (res && res.success) {
             setStatus(amountVal + ' g rögzítve', 'status-success');
@@ -804,6 +871,13 @@
 
         if (data.wakeTime) {
           document.getElementById('wakeTime').value = data.wakeTime;
+        }
+
+        // Nap jellegének (Itthon / Dolgozós) frissítése a gombokon
+        if (data.dayType) {
+          activeDayType = data.dayType;
+          document.getElementById('btnItthon').className = 'day-type-btn' + (data.dayType === 'Itthon' ? ' active' : '');
+          document.getElementById('btnDolgozos').className = 'day-type-btn' + (data.dayType === 'Dolgozós' ? ' active' : '');
         }
 
         var doses = data.allDoses || [];
