@@ -59,7 +59,6 @@
         outline: none;
       }
 
-      /* Napválasztó kapcsoló Korinál (Szabadnap vs Munkanap) emoji nélkül */
       .day-type-container {
         display: none;
         margin-bottom: 12px;
@@ -230,7 +229,6 @@
   </head>
   <body>
 
-    <!-- Felső vezérlősor -->
     <div class="top-row">
       <div class="form-group" style="max-width: 75px;">
         <label for="sheetName">Profil</label>
@@ -270,7 +268,7 @@
       </div>
     </div>
 
-    <!-- Nap jellege választó sáv (Korinál aktív, emojik nélkül) -->
+    <!-- Nap jellege választó sáv (Korinál aktív) -->
     <div id="dayTypeContainer" class="day-type-container">
       <button type="button" id="btnSzabadnap" class="day-type-btn active" onclick="setDayType('Szabadnap')">Szabadnap</button>
       <button type="button" id="btnMunkanap" class="day-type-btn" onclick="setDayType('Munkanap')">Munkanap</button>
@@ -526,31 +524,24 @@
         return isNaN(num) ? 0 : num;
       }
 
-      function getIntervalHoursToNow(data) {
-        var currentTime = document.getElementById('time').value.trim();
-        if (!currentTime || currentTime.indexOf(':') === -1) return null;
+      // Ébredéstől a beállított időpontig eltelt idő órában (pontosan a Táblázat E oszlopa!)
+      function getAwakeHoursToNow() {
+        var wakeVal = document.getElementById('wakeTime').value.trim();
+        var curVal = document.getElementById('time').value.trim();
 
-        var last = data.lastDose;
-        var prevTime = null;
+        if (!wakeVal || !curVal || wakeVal.indexOf(':') === -1 || curVal.indexOf(':') === -1) return null;
 
-        if (last && last.time) {
-          prevTime = last.time;
-        } else {
-          prevTime = document.getElementById('wakeTime').value.trim();
-        }
+        var wp = wakeVal.split(':');
+        var cp = curVal.split(':');
+        var wakeM = parseInt(wp[0], 10) * 60 + parseInt(wp[1], 10);
+        var curM = parseInt(cp[0], 10) * 60 + parseInt(cp[1], 10);
 
-        if (!prevTime || prevTime.indexOf(':') === -1) return null;
-
-        var p1 = prevTime.split(':');
-        var p2 = currentTime.split(':');
-        var min1 = parseInt(p1[0], 10) * 60 + parseInt(p1[1], 10);
-        var min2 = parseInt(p2[0], 10) * 60 + parseInt(p2[1], 10);
-        var diffMin = min2 - min1;
-        if (diffMin <= 0) diffMin += 1440;
-
-        return diffMin / 60;
+        var diff = curM - wakeM;
+        if (diff <= 0) diff += 1440;
+        return diff / 60;
       }
 
+      // TISZTA MATEMATIKAI DÓZISJAVASLAT CSALÁSOK ÉS PLAFONOK NÉLKÜL
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
 
@@ -560,46 +551,62 @@
             if (data.allDoses[d].hasData) currentRecordedCount++;
           }
         }
+
         var nextDoseNum = currentRecordedCount + 1;
         if (nextDoseNum > 8) return;
 
         var yMap = data.yesterdayRates;
         var baselineRate = (yMap && yMap[nextDoseNum] !== undefined) ? parseFloat(yMap[nextDoseNum]) : 1.30;
-
         var targetRate = Math.max(0.1, baselineRate - 0.023);
 
-        var intervalHours = getIntervalHoursToNow(data);
-        if (!intervalHours || intervalHours <= 0) return;
+        var awakeHours = getAwakeHoursToNow();
+        if (!awakeHours || awakeHours <= 0) return;
 
-        var neededDose = targetRate * intervalHours;
+        var currentTotal = parseFloat(String(data.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
+        
+        // PURE MATH: Mennyi összdózis engedélyezett az ébredéstől számolva a célráta tartásához
+        var allowedTotalAtThisTime = targetRate * awakeHours;
+        var neededDose = allowedTotalAtThisTime - currentTotal;
 
-        if (neededDose > 0.1) {
-          var recommended = Math.min(3.80, neededDose);
-          document.getElementById('amount').value = recommended.toFixed(2).replace('.', ',');
-          document.getElementById('amount').style.color = '#ffffff';
+        var amtInput = document.getElementById('amount');
+
+        if (neededDose > 0.05) {
+          // NINCS MESTERSÉGES PLAFON: Kiírja a valós grammot, amit a ráta megkíván (akár 4.8g vagy 5.1g)
+          amtInput.value = neededDose.toFixed(2).replace('.', ',');
+          amtInput.style.color = '#ffffff';
+          onTimeOrAmountInput();
+        } else {
+          // TÚLLÉPÉS ESETÉN: Kiírja a negatív grammot pirossal, jelezve, hogy még várni kell
+          amtInput.value = neededDose.toFixed(2).replace('.', ',');
+          amtInput.style.color = '#ef5350';
           onTimeOrAmountInput();
         }
       }
 
+      // ÉLŐ RÁTASZÁMÍTÁS (TÖKÉLETESEN MEGEGYEZIK A TÁBLÁZAT H OSZLOPÁVAL)
       function onTimeOrAmountInput() {
         var raw = document.getElementById('amount').value;
         var amountVal = getParsedAmount(raw);
         var previewBox = document.getElementById('livePreviewBox');
         var rateDisplayEl = document.getElementById('prevRateDisplay');
 
-        if (amountVal <= 0 || !currentStatsData) {
+        var isNegative = String(raw).trim().startsWith('-');
+
+        if ((amountVal === 0 && !isNegative) || !currentStatsData) {
           previewBox.style.display = 'none';
           return;
         }
 
         previewBox.style.display = 'block';
 
+        // 1. Új összdózis
         var currentTotal = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
-        var newTotal = currentTotal + amountVal;
+        var newTotal = isNegative ? currentTotal : (currentTotal + amountVal);
         document.getElementById('prevTotal').innerText = newTotal.toFixed(2) + ' g';
 
+        // 2. Eltérés az előző adaghoz
         var last = currentStatsData.lastDose;
-        if (last && last.amount) {
+        if (last && last.amount && !isNegative) {
           var lastAmt = parseFloat(String(last.amount).replace(',', '.')) || 0;
           var diff = (amountVal - lastAmt).toFixed(2);
           var sign = diff > 0 ? '+' : '';
@@ -608,14 +615,15 @@
           document.getElementById('prevDiff').innerText = '-';
         }
 
-        var intervalHours = getIntervalHoursToNow(currentStatsData);
-        var currentDoseRate = null;
+        // 3. Fogyasztási ráta: ÚJ ÖSSZDÓZIS / ÉBREDÉS ÓTA ELTELT IDŐ (Pontosan a táblázat H oszlopa!)
+        var awakeHours = getAwakeHoursToNow();
+        var resultingRate = null;
 
-        if (intervalHours && intervalHours > 0) {
-          currentDoseRate = parseFloat((amountVal / intervalHours).toFixed(2));
+        if (awakeHours && awakeHours > 0) {
+          resultingRate = parseFloat((newTotal / awakeHours).toFixed(2));
         }
 
-        if (currentDoseRate !== null && !isNaN(currentDoseRate)) {
+        if (resultingRate !== null && !isNaN(resultingRate)) {
           var currentRecordedCount = 0;
           if (currentStatsData.allDoses) {
             for (var d = 0; d < currentStatsData.allDoses.length; d++) {
@@ -636,15 +644,16 @@
 
           if (baselineRate !== null && !isNaN(baselineRate) && baselineRate > 0) {
             var baseFormatted = baselineRate.toFixed(2);
-            var currentFormatted = currentDoseRate.toFixed(2);
+            var currentFormatted = resultingRate.toFixed(2);
 
-            if (currentDoseRate <= baselineRate) {
+            // Ha alacsonyabb vagy egyenlő a 10 napos átlaggal -> ZÖLD, ha túllépi -> PIROS
+            if (resultingRate <= baselineRate && !isNegative) {
               rateDisplayEl.innerHTML = `<span style="color: #81c784;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #81c784;">${baseFormatted} g/ó</span>`;
             } else {
               rateDisplayEl.innerHTML = `<span style="color: #ef5350;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #888;">${baseFormatted} g/ó</span>`;
             }
           } else {
-            rateDisplayEl.innerHTML = `<span style="color: #a5d6a7;">${currentDoseRate.toFixed(2)} g/ó</span>`;
+            rateDisplayEl.innerHTML = `<span style="color: #a5d6a7;">${resultingRate.toFixed(2)} g/ó</span>`;
           }
         } else {
           rateDisplayEl.innerText = '-';
@@ -680,8 +689,15 @@
         if (isSaving) return;
 
         var amountInput = document.getElementById('amount');
-        var amountVal = getParsedAmount(amountInput.value);
+        var rawVal = amountInput.value.trim();
 
+        if (rawVal.startsWith('-')) {
+          setStatus('Még nem telt el elég idő!', 'status-error');
+          setTimeout(() => { setStatus('', 'status-idle'); }, 2500);
+          return;
+        }
+
+        var amountVal = getParsedAmount(rawVal);
         if (amountVal <= 0) return;
 
         var cleanAmountString = String(amountVal).replace(',', '.');
@@ -874,7 +890,6 @@
           document.getElementById('wakeTime').value = data.wakeTime;
         }
 
-        // Szabadnap / Munkanap gombállapot frissítése emoji nélkül
         if (data.dayType) {
           activeDayType = (data.dayType.toLowerCase() === 'munkanap' || data.dayType.toLowerCase() === 'dolgozós') ? 'Munkanap' : 'Szabadnap';
           document.getElementById('btnSzabadnap').className = 'day-type-btn' + (activeDayType === 'Szabadnap' ? ' active' : '');
