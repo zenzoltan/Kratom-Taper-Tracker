@@ -208,6 +208,7 @@
   </head>
   <body>
 
+    <!-- Felső vezérlősor gépelhető számbillentyűzetes időpontokkal -->
     <div class="top-row">
       <div class="form-group" style="max-width: 75px;">
         <label for="sheetName">Profil</label>
@@ -222,11 +223,28 @@
       </div>
       <div class="form-group" style="max-width: 82px;">
         <label for="wakeTime">Ébredés</label>
-        <input type="time" id="wakeTime" onchange="onWakeTimeChange()">
+        <input 
+          type="text" 
+          id="wakeTime" 
+          placeholder="07:00" 
+          maxlength="5" 
+          inputmode="numeric" 
+          oninput="formatTimeInput(this)" 
+          onblur="onWakeTimeBlur(this)"
+        >
       </div>
       <div class="form-group" style="max-width: 82px;">
         <label for="time">Időpont</label>
-        <input type="time" id="time" onchange="onTimeChange()" required>
+        <input 
+          type="text" 
+          id="time" 
+          placeholder="08:20" 
+          maxlength="5" 
+          inputmode="numeric" 
+          oninput="formatTimeInput(this); onTimeChange();" 
+          onblur="normalizeTimeField(this); onTimeChange();" 
+          required
+        >
       </div>
     </div>
 
@@ -244,7 +262,7 @@
         onkeydown="handleKey(event)"
         onblur="handleBlur()"
       >
-      <!-- Mentés előtti élő statisztika előnézet: "1.28 / 1.30 g/ó" -->
+      <!-- Élő statisztika előnézet -->
       <div id="livePreviewBox" class="preview-box">
         <div class="preview-grid">
           <div>Össz: <span id="prevTotal" class="preview-item">-</span></div>
@@ -278,7 +296,7 @@
       </div>
     </div>
 
-    <!-- 3. BLOKK: SZERKESZTHETŐ AZNAPI ADAGOK TÁBLÁZATA (CSENDES AUTOMATIKUS MENTÉSSEL) -->
+    <!-- 3. BLOKK: SZERKESZTHETŐ AZNAPI ADAGOK TÁBLÁZATA -->
     <div class="card">
       <div class="card-header">
         <span>Aznapi adagok</span>
@@ -289,11 +307,43 @@
     </div>
 
     <script>
-      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzuK3nrVkh-wnvDkMq-3RwQsaKU2FZ6I1jmHcX-N53yCgjWlnbs2f5vSXo448ej1oM/exec";
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyoKf3sNyVduYSrkH2HJkPUefWYJJDBoPjkir5FJpa-LtMXJyGWUC2rXJ9fBuXIWmY/exec";
       var isSaving = false;
       var lastRecordedTimeStr = null;
       var currentStatsData = null;
       var isUserModified = false;
+
+      // Okos időformázó iPhone-ra (automatikusan kiteszi a kettőspontot pl. "08:" gépeléskor)
+      function formatTimeInput(el) {
+        var val = el.value.replace(/[^0-9]/g, '');
+        if (val.length >= 3) {
+          el.value = val.substring(0, 2) + ':' + val.substring(2, 4);
+        } else {
+          el.value = val;
+        }
+      }
+
+      // Mező elhagyásakor normalizálja (pl. "8" -> "08:00", "830" -> "08:30")
+      function normalizeTimeField(el) {
+        var val = el.value.trim();
+        if (!val) return;
+        var digits = val.replace(/[^0-9]/g, '');
+        if (digits.length === 1 || digits.length === 2) {
+          var h = parseInt(digits, 10);
+          el.value = (h < 10 ? '0' + h : h) + ':00';
+        } else if (digits.length === 3) {
+          var h = parseInt(digits.substring(0, 1), 10);
+          var m = digits.substring(1, 3);
+          el.value = '0' + h + ':' + m;
+        } else if (digits.length >= 4) {
+          el.value = digits.substring(0, 2) + ':' + digits.substring(2, 4);
+        }
+      }
+
+      function onWakeTimeBlur(el) {
+        normalizeTimeField(el);
+        onWakeTimeChange();
+      }
 
       function callApi(params, onSuccess, onError) {
         const callbackName = 'jsonp_cb_' + Math.round(100000 * Math.random());
@@ -394,10 +444,9 @@
         return isNaN(num) ? 0 : num;
       }
 
-      // KISZÁMOLJA AZ ADOTT DÓZIS IDŐKÖZÉT ÓRÁBAN
       function getIntervalHoursToNow(data) {
-        var currentTime = document.getElementById('time').value;
-        if (!currentTime) return null;
+        var currentTime = document.getElementById('time').value.trim();
+        if (!currentTime || currentTime.indexOf(':') === -1) return null;
 
         var last = data.lastDose;
         var prevTime = null;
@@ -405,23 +454,21 @@
         if (last && last.time) {
           prevTime = last.time;
         } else {
-          // Ha ez az 1. dózis, az ébredési időtől számolunk
-          prevTime = document.getElementById('wakeTime').value;
+          prevTime = document.getElementById('wakeTime').value.trim();
         }
 
-        if (!prevTime) return null;
+        if (!prevTime || prevTime.indexOf(':') === -1) return null;
 
         var p1 = prevTime.split(':');
         var p2 = currentTime.split(':');
         var min1 = parseInt(p1[0], 10) * 60 + parseInt(p1[1], 10);
         var min2 = parseInt(p2[0], 10) * 60 + parseInt(p2[1], 10);
         var diffMin = min2 - min1;
-        if (diffMin <= 0) diffMin += 1440; // éjfélen átnyúlás
+        if (diffMin <= 0) diffMin += 1440;
 
         return diffMin / 60;
       }
 
-      // PONTOS DÓZISJAVASLAT: (10 napos átlag - 0.02) * eltelt órák
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
 
@@ -437,17 +484,15 @@
         var yMap = data.yesterdayRates;
         var baselineRate = (yMap && yMap[nextDoseNum] !== undefined) ? parseFloat(yMap[nextDoseNum]) : 1.30;
 
-        // Célráta: pontosan 0.02-vel kevesebb, mint a 10 napos átlag!
-        var targetRate = Math.max(0.1, baselineRate - 0.02);
+        // Célráta: pontosan 0.023 g/órával kevesebb
+        var targetRate = Math.max(0.1, baselineRate - 0.023);
 
         var intervalHours = getIntervalHoursToNow(data);
         if (!intervalHours || intervalHours <= 0) return;
 
-        // Az adag nagysága: Célráta * Időköz
         var neededDose = targetRate * intervalHours;
 
         if (neededDose > 0.1) {
-          // Észszerű határok között tartjuk (max 3.8g)
           var recommended = Math.min(3.80, neededDose);
           document.getElementById('amount').value = recommended.toFixed(2);
           document.getElementById('amount').style.color = '#ffffff';
@@ -455,7 +500,6 @@
         }
       }
 
-      // ÉLŐ RÁTASZÁMÍTÁS ÉS ÖSSZEHASONLÍTÁS (1.28 / 1.30 g/ó)
       function onTimeOrAmountInput() {
         var raw = document.getElementById('amount').value;
         var amountVal = getParsedAmount(raw);
@@ -469,12 +513,10 @@
 
         previewBox.style.display = 'block';
 
-        // 1. Tervezett új összdózis
         var currentTotal = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
         var newTotal = currentTotal + amountVal;
         document.getElementById('prevTotal').innerText = newTotal.toFixed(2) + ' g';
 
-        // 2. Tervezett eltérés az előző adaghoz
         var last = currentStatsData.lastDose;
         if (last && last.amount) {
           var lastAmt = parseFloat(String(last.amount).replace(',', '.')) || 0;
@@ -485,7 +527,6 @@
           document.getElementById('prevDiff').innerText = '-';
         }
 
-        // 3. A sor saját fogyasztási rátája (Adag / Időköz) a táblázat H oszlopa szerint!
         var intervalHours = getIntervalHoursToNow(currentStatsData);
         var currentDoseRate = null;
 
@@ -516,7 +557,6 @@
             var baseFormatted = baselineRate.toFixed(2);
             var currentFormatted = currentDoseRate.toFixed(2);
 
-            // Ha kevesebb vagy egyenlő a 10 napos átlagnál -> ZÖLD, ha több -> PIROS
             if (currentDoseRate <= baselineRate) {
               rateDisplayEl.innerHTML = `<span style="color: #81c784;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #81c784;">${baseFormatted} g/ó</span>`;
             } else {
@@ -533,7 +573,9 @@
       function onWakeTimeChange() {
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
-        var wakeVal = document.getElementById('wakeTime').value;
+        var wakeVal = document.getElementById('wakeTime').value.trim();
+
+        if (wakeVal && wakeVal.indexOf(':') === -1) return;
 
         setStatus('Ébredési idő mentése...', 'status-saving');
         callApi({
@@ -543,7 +585,7 @@
           wakeTime: wakeVal
         }, function(res) {
           if (res && res.success) {
-            setStatus('Ébredés frissítve', 'status-success');
+            setStatus('Ébredés mindkét félnél frissítve ✓', 'status-success');
             saveToLocalCache(sheetName, dateStr, res.stats);
             renderAllStats(res.stats);
             setTimeout(() => { setStatus('', 'status-idle'); }, 2000);
@@ -564,8 +606,8 @@
         var cleanAmountString = String(amountVal).replace(',', '.');
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
-        var time = document.getElementById('time').value;
-        var wakeTime = document.getElementById('wakeTime').value;
+        var time = document.getElementById('time').value.trim();
+        var wakeTime = document.getElementById('wakeTime').value.trim();
 
         isSaving = true;
         amountInput.disabled = true;
@@ -614,6 +656,8 @@
       function onTableFieldSilentChange(doseNum) {
         var tEl = document.getElementById('t_time_' + doseNum);
         var aEl = document.getElementById('t_amount_' + doseNum);
+
+        normalizeTimeField(tEl);
 
         var timeVal = tEl ? tEl.value.trim() : '';
         var amtVal = aEl ? aEl.value.trim() : '';
@@ -767,10 +811,28 @@
             <tr>
               <td style="color: #666; font-size: 11px; text-align: center;">${item.doseNumber}</td>
               <td>
-                <input type="time" id="t_time_${item.doseNumber}" class="table-input" value="${item.time}" onchange="onTableFieldSilentChange(${item.doseNumber})">
+                <input 
+                  type="text" 
+                  id="t_time_${item.doseNumber}" 
+                  class="table-input" 
+                  maxlength="5" 
+                  inputmode="numeric" 
+                  placeholder="00:00" 
+                  value="${item.time}" 
+                  oninput="formatTimeInput(this)" 
+                  onblur="onTableFieldSilentChange(${item.doseNumber})"
+                >
               </td>
               <td>
-                <input type="text" id="t_amount_${item.doseNumber}" class="table-input" inputmode="decimal" placeholder="0.00" value="${item.amount}" onchange="onTableFieldSilentChange(${item.doseNumber})">
+                <input 
+                  type="text" 
+                  id="t_amount_${item.doseNumber}" 
+                  class="table-input" 
+                  inputmode="decimal" 
+                  placeholder="0.00" 
+                  value="${item.amount}" 
+                  onblur="onTableFieldSilentChange(${item.doseNumber})"
+                >
               </td>
             </tr>
           `;
