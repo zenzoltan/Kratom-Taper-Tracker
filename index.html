@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="hu">
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <title>Daily Log</title>
@@ -227,18 +227,18 @@
 
     <div class="top-row">
       <div class="form-group" style="max-width: 75px;">
-        <label for="sheetName">Profil</label>
+        <label for="sheetName">Profile</label>
         <select id="sheetName" onchange="onProfileChange()">
           <option value="Kori">Kori</option>
           <option value="Zoli">Zoli</option>
         </select>
       </div>
       <div class="form-group">
-        <label for="doseDate">Dátum</label>
+        <label for="doseDate">Date</label>
         <input type="date" id="doseDate" onchange="loadStats()" required>
       </div>
       <div class="form-group" style="max-width: 82px;">
-        <label for="wakeTime">Ébredés</label>
+        <label for="wakeTime">Wake-up</label>
         <input 
           type="text" 
           id="wakeTime" 
@@ -252,7 +252,7 @@
         >
       </div>
       <div class="form-group" style="max-width: 82px;">
-        <label for="time">Időpont</label>
+        <label for="time">Time</label>
         <input 
           type="text" 
           id="time" 
@@ -269,8 +269,8 @@
     </div>
 
     <div id="dayTypeContainer" class="day-type-container">
-      <button type="button" id="btnSzabadnap" class="day-type-btn active" onclick="setDayType('Szabadnap')">Szabadnap</button>
-      <button type="button" id="btnMunkanap" class="day-type-btn" onclick="setDayType('Munkanap')">Munkanap</button>
+      <button type="button" id="btnSzabadnap" class="day-type-btn active" onclick="setDayType('Szabadnap')">Day Off</button>
+      <button type="button" id="btnMunkanap" class="day-type-btn" onclick="setDayType('Munkanap')">Workday</button>
     </div>
 
     <form id="mainDoseForm" onsubmit="event.preventDefault(); autoSubmit();" class="dose-container" onclick="handleDoseContainerClick(event)">
@@ -288,39 +288,39 @@
       >
       <div id="livePreviewBox" class="preview-box">
         <div class="preview-grid">
-          <div>Össz: <span id="prevTotal" class="preview-item">-</span></div>
-          <div>Eltérés: <span id="prevDiff" class="preview-item">-</span></div>
-          <div>Ráta: <span id="prevRateDisplay" class="preview-item">-</span></div>
+          <div>Total: <span id="prevTotal" class="preview-item">-</span></div>
+          <div>Diff: <span id="prevDiff" class="preview-item">-</span></div>
+          <div>Rate: <span id="prevRateDisplay" class="preview-item">-</span></div>
         </div>
       </div>
     </form>
 
     <div class="card">
       <div class="card-header">
-        <span>Legutóbbi</span>
+        <span>Latest</span>
         <span id="lastDoseTimeLabel" style="color: #64b5f6;"></span>
       </div>
       <div id="lastDoseStatsContent">
-        <div class="loading">Betöltés...</div>
+        <div class="loading">Loading...</div>
       </div>
     </div>
 
     <div class="card">
       <div class="card-header">
-        <span>Mai értékek</span>
+        <span>Daily Stats</span>
         <span id="dateSubtitle" style="color: #555;"></span>
       </div>
       <div id="summaryStatsContent">
-        <div class="loading">Betöltés...</div>
+        <div class="loading">Loading...</div>
       </div>
     </div>
 
     <div class="card">
       <div class="card-header card-header-noborder">
-        <span>Mai adatok</span>
+        <span>Daily Entries</span>
       </div>
       <div id="editableDosesContent">
-        <div class="loading">Betöltés...</div>
+        <div class="loading">Loading...</div>
       </div>
     </div>
 
@@ -403,7 +403,7 @@
         script.onerror = function() {
           delete window[callbackName];
           if (script && script.parentNode) script.parentNode.removeChild(script);
-          if (onError) onError(new Error("Nem sikerült elérni a szervert"));
+          if (onError) onError(new Error("Failed to reach server"));
         };
         document.body.appendChild(script);
       }
@@ -663,12 +663,12 @@
             var currentFormatted = currentSegmentRate.toFixed(2);
 
             if (currentSegmentRate <= baselineRate) {
-              rateDisplayEl.innerHTML = `<span style="color: #81c784;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #81c784;">${baseFormatted} g/ó</span>`;
+              rateDisplayEl.innerHTML = `<span style="color: #81c784;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #81c784;">${baseFormatted} g/h</span>`;
             } else {
-              rateDisplayEl.innerHTML = `<span style="color: #ef5350;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #888;">${baseFormatted} g/ó</span>`;
+              rateDisplayEl.innerHTML = `<span style="color: #ef5350;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #888;">${baseFormatted} g/h</span>`;
             }
           } else {
-            rateDisplayEl.innerHTML = `<span style="color: #a5d6a7;">${currentSegmentRate.toFixed(2)} g/ó</span>`;
+            rateDisplayEl.innerHTML = `<span style="color: #a5d6a7;">${currentSegmentRate.toFixed(2)} g/h</span>`;
           }
         } else {
           rateDisplayEl.innerText = '-';
@@ -887,9 +887,9 @@
         } catch(e) {}
 
         if (!hasCachedData) {
-          document.getElementById('lastDoseStatsContent').innerHTML = '<div class="loading">Betöltés...</div>';
-          document.getElementById('summaryStatsContent').innerHTML = '<div class="loading">Betöltés...</div>';
-          document.getElementById('editableDosesContent').innerHTML = '<div class="loading">Betöltés...</div>';
+          document.getElementById('lastDoseStatsContent').innerHTML = '<div class="loading">Loading...</div>';
+          document.getElementById('summaryStatsContent').innerHTML = '<div class="loading">Loading...</div>';
+          document.getElementById('editableDosesContent').innerHTML = '<div class="loading">Loading...</div>';
         }
 
         callApi({
@@ -900,9 +900,9 @@
           if (!data || !data.found) {
             if (!hasCachedData) {
               currentStatsData = null;
-              document.getElementById('lastDoseStatsContent').innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">Nincs korábbi adag.</div>';
-              document.getElementById('summaryStatsContent').innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">Nincs bejegyzés erre a napra.</div>';
-              document.getElementById('editableDosesContent').innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">Nincs adat.</div>';
+              document.getElementById('lastDoseStatsContent').innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">No previous dose.</div>';
+              document.getElementById('summaryStatsContent').innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">No entries for this day.</div>';
+              document.getElementById('editableDosesContent').innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">No data.</div>';
             }
             return;
           }
@@ -912,7 +912,7 @@
         }, function(err) {
           if (!hasCachedData) {
             document.getElementById('lastDoseStatsContent').innerHTML = '';
-            document.getElementById('summaryStatsContent').innerHTML = '<div style="color: #e57373; font-size: 12px; padding: 8px;">Hiba: ' + err.message + '</div>';
+            document.getElementById('summaryStatsContent').innerHTML = '<div style="color: #e57373; font-size: 12px; padding: 8px;">Error: ' + err.message + '</div>';
             document.getElementById('editableDosesContent').innerHTML = '';
           }
         });
@@ -926,29 +926,29 @@
 
         if (!last) {
           timeLabel.innerText = '';
-          lastCard.innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">Még nincs mai adag rögzítve.</div>';
+          lastCard.innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">No doses logged today.</div>';
           lastRecordedTimeStr = null;
         } else {
           timeLabel.innerText = '#' + last.doseNumber + ' (' + last.time.substring(0, 5) + ' - ' + last.amount + 'g)';
           lastRecordedTimeStr = last.time;
 
           lastCard.innerHTML = `
-            <div class="stat-row"><span class="stat-label">Eltelt idő</span><span id="liveElapsedDisplay" class="stat-value highlight-value">Számítás...</span></div>
-            <div class="stat-row"><span class="stat-label">Ébren</span><span class="stat-value">${last.awakeTime}</span></div>
-            <div class="stat-row"><span class="stat-label">Eltérés</span><span class="stat-value">${last.diff}</span></div>
-            <div class="stat-row"><span class="stat-label">Ráta</span><span class="stat-value">${last.rate}</span></div>
+            <div class="stat-row"><span class="stat-label">Elapsed Time</span><span id="liveElapsedDisplay" class="stat-value highlight-value">Calculating...</span></div>
+            <div class="stat-row"><span class="stat-label">Time Awake</span><span class="stat-value">${last.awakeTime}</span></div>
+            <div class="stat-row"><span class="stat-label">Diff from Previous</span><span class="stat-value">${last.diff}</span></div>
+            <div class="stat-row"><span class="stat-label">Rate</span><span class="stat-value">${last.rate}</span></div>
           `;
           updateLiveElapsedTime();
         }
 
         document.getElementById('summaryStatsContent').innerHTML = `
-          <div class="stat-row"><span class="stat-label">Össz</span><span class="stat-value">${data.dailyTotal}</span></div>
-          <div class="stat-row"><span class="stat-label">Átlag</span><span class="stat-value">${data.avgDose}</span></div>
-          <div class="stat-row"><span class="stat-label">Eltérés</span><span class="stat-value">${data.avgDiff}</span></div>
-          <div class="stat-row"><span class="stat-label">Ráta</span><span class="stat-value">${data.avgRate}</span></div>
-          <div class="stat-row"><span class="stat-label">Legmagasabb</span><span class="stat-value">${data.maxDose}</span></div>
-          <div class="stat-row"><span class="stat-label">Adagok</span><span class="stat-value">${data.totalDoses}</span></div>
-          <div class="stat-row"><span class="stat-label">Időköz</span><span class="stat-value">${data.avgInterval}</span></div>
+          <div class="stat-row"><span class="stat-label">Daily Total</span><span class="stat-value">${data.dailyTotal}</span></div>
+          <div class="stat-row"><span class="stat-label">Average Dose</span><span class="stat-value">${data.avgDose}</span></div>
+          <div class="stat-row"><span class="stat-label">Average Diff</span><span class="stat-value">${data.avgDiff}</span></div>
+          <div class="stat-row"><span class="stat-label">Average Rate</span><span class="stat-value">${data.avgRate}</span></div>
+          <div class="stat-row"><span class="stat-label">Max Dose</span><span class="stat-value">${data.maxDose}</span></div>
+          <div class="stat-row"><span class="stat-label">Dose Count</span><span class="stat-value">${data.totalDoses}</span></div>
+          <div class="stat-row"><span class="stat-label">Average Interval</span><span class="stat-value">${data.avgInterval}</span></div>
         `;
       }
 
@@ -1042,9 +1042,9 @@
         var mins = totalMinutes % 60;
 
         if (hours === 0) {
-          el.innerText = mins + ' perc';
+          el.innerText = mins + ' min';
         } else {
-          el.innerText = hours + ' óra ' + String(mins).padStart(2, '0') + ' perc';
+          el.innerText = hours + ' h ' + String(mins).padStart(2, '0') + ' min';
         }
       }
     </script>
