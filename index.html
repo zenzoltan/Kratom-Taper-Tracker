@@ -433,6 +433,7 @@
         resetDateTime();
         loadStats();
 
+        // Élő óraszinkron és élő számláló frissítése
         setInterval(syncClockToLiveTime, 1000);
         setInterval(updateLiveElapsedTime, 15000);
       };
@@ -561,6 +562,7 @@
         return isNaN(num) ? 0 : num;
       }
 
+      // KÉT ADAG KÖZÖTTI VALÓS IDŐKÖZ KISZÁMÍTÁSA (PONTOS PERCALAPÚ SZÁMÍTÁSSAL)
       function getIntervalHoursToNow(data) {
         var currentTime = document.getElementById('time').value.trim();
         if (!currentTime || currentTime.indexOf(':') === -1) return null;
@@ -580,12 +582,22 @@
         var p2 = currentTime.split(':');
         var min1 = parseInt(p1[0], 10) * 60 + parseInt(p1[1], 10);
         var min2 = parseInt(p2[0], 10) * 60 + parseInt(p2[1], 10);
+        
         var diffMin = min2 - min1;
-        if (diffMin <= 0) diffMin += 1440;
+
+        // Éjszakai átfordulás kezelése
+        if (diffMin < 0) {
+          if (Math.abs(diffMin) <= 3) {
+            diffMin = 0; // Pár perces eltérés esetén azonosnak vesszük
+          } else {
+            diffMin += 1440;
+          }
+        }
 
         return diffMin / 60;
       }
 
+      // DÓZISJAVASLAT: 0,00-TÓL 0,04-IG FOLYAMATOSAN ÉS UGYANABBAN A SEBESSÉGBEN NŐ MINT KÉSŐBB
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
 
@@ -600,20 +612,26 @@
 
         var yMap = data.yesterdayRates;
         var baselineRate = (yMap && yMap[nextDoseNum] !== undefined) ? parseFloat(yMap[nextDoseNum]) : 1.30;
-        
         var targetRate = Math.max(0.1, baselineRate - 0.023);
 
         var intervalHours = getIntervalHoursToNow(data);
-        if (!intervalHours || intervalHours <= 0) return;
+        var amtInput = document.getElementById('amount');
 
-        var neededDose = targetRate * intervalHours;
-
-        if (neededDose > 0.05) {
-          var amtInput = document.getElementById('amount');
-          amtInput.value = neededDose.toFixed(2).replace('.', ',');
-          amtInput.style.color = '#ffffff';
+        if (intervalHours === null || intervalHours < 0) {
+          amtInput.value = '0,00';
           onTimeOrAmountInput();
+          return;
         }
+
+        // Tiszta szorzás: Célráta * Eltelt óra
+        var rawNeededDose = targetRate * intervalHours;
+
+        // Folyamatos növekedés a legelső percekben is (0.00 -> 0.01 -> 0.02 -> 0.03 -> 0.04 -> 0.05...)
+        var formattedDose = rawNeededDose.toFixed(2).replace('.', ',');
+        amtInput.value = formattedDose;
+        amtInput.style.color = '#ffffff';
+
+        onTimeOrAmountInput();
       }
 
       function onTimeOrAmountInput() {
@@ -629,10 +647,12 @@
 
         previewBox.style.display = 'block';
 
+        // 1. Új összdózis
         var currentTotal = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
         var newTotal = currentTotal + amountVal;
         document.getElementById('prevTotal').innerText = newTotal.toFixed(2) + ' g';
 
+        // 2. Eltérés az előző adaghoz
         var last = currentStatsData.lastDose;
         if (last && last.amount) {
           var lastAmt = parseFloat(String(last.amount).replace(',', '.')) || 0;
@@ -643,6 +663,7 @@
           document.getElementById('prevDiff').innerText = '-';
         }
 
+        // 3. Szakaszi égési ráta = BEÍRT ADAG / ELŐZŐ ADAG ÓTA ELTELT IDŐ
         var intervalHours = getIntervalHoursToNow(currentStatsData);
         var currentSegmentRate = null;
 
@@ -719,7 +740,7 @@
 
         if (amountVal <= 0) return;
 
-        var cleanAmountString = String(amountInput.value).replace(',', '.');
+        var cleanAmountString = String(amountVal).replace(',', '.');
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
         var time = document.getElementById('time').value.trim();
@@ -741,9 +762,10 @@
           if (res && res.success) {
             setStatus(amountVal + ' g rögzítve', 'status-success');
             amountInput.disabled = false;
-            amountInput.value = '';
+            amountInput.value = '0,00';
             amountInput.style.color = '#ffffff';
             isUserModified = false;
+            isManualTimeSet = false;
             document.getElementById('livePreviewBox').style.display = 'none';
             isSaving = false;
 
@@ -992,4 +1014,4 @@
       }
     </script>
   </body>
-</html> 
+</html>
