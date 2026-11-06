@@ -934,7 +934,7 @@
 
           lastCard.innerHTML = `
             <div class="stat-row"><span class="stat-label">Eltelt idő</span><span id="liveElapsedDisplay" class="stat-value highlight-value">Számítás...</span></div>
-            <div class="stat-row"><span class="stat-label">Ébren töltött idő</span><span class="stat-value">${last.awakeTime}</span></div>
+            <div class="stat-row"><span class="stat-label">Ébren</span><span class="stat-value">${last.awakeTime}</span></div>
             <div class="stat-row"><span class="stat-label">Eltérés</span><span class="stat-value">${last.diff}</span></div>
             <div class="stat-row"><span class="stat-label">Ráta</span><span class="stat-value">${last.rate}</span></div>
           `;
@@ -947,8 +947,8 @@
           <div class="stat-row"><span class="stat-label">Eltérés</span><span class="stat-value">${data.avgDiff}</span></div>
           <div class="stat-row"><span class="stat-label">Ráta</span><span class="stat-value">${data.avgRate}</span></div>
           <div class="stat-row"><span class="stat-label">Legmagasabb</span><span class="stat-value">${data.maxDose}</span></div>
-          <div class="stat-row"><span class="stat-label">Adagok száma</span><span class="stat-value">${data.totalDoses}</span></div>
-          <div class="stat-row"><span class="stat-label">Átlagos időköz</span><span class="stat-value">${data.avgInterval}</span></div>
+          <div class="stat-row"><span class="stat-label">Adagok</span><span class="stat-value">${data.totalDoses}</span></div>
+          <div class="stat-row"><span class="stat-label">Időköz</span><span class="stat-value">${data.avgInterval}</span></div>
         `;
       }
 
