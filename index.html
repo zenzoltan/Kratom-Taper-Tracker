@@ -433,7 +433,6 @@
         resetDateTime();
         loadStats();
 
-        // Élő óraszinkron és élő számláló frissítése
         setInterval(syncClockToLiveTime, 1000);
         setInterval(updateLiveElapsedTime, 15000);
       };
@@ -562,7 +561,6 @@
         return isNaN(num) ? 0 : num;
       }
 
-      // KÉT ADAG KÖZÖTTI VALÓS IDŐKÖZ KISZÁMÍTÁSA (PONTOS PERCALAPÚ SZÁMÍTÁSSAL)
       function getIntervalHoursToNow(data) {
         var currentTime = document.getElementById('time').value.trim();
         if (!currentTime || currentTime.indexOf(':') === -1) return null;
@@ -585,10 +583,9 @@
         
         var diffMin = min2 - min1;
 
-        // Éjszakai átfordulás kezelése
         if (diffMin < 0) {
           if (Math.abs(diffMin) <= 3) {
-            diffMin = 0; // Pár perces eltérés esetén azonosnak vesszük
+            diffMin = 0;
           } else {
             diffMin += 1440;
           }
@@ -597,7 +594,6 @@
         return diffMin / 60;
       }
 
-      // DÓZISJAVASLAT: 0,00-TÓL 0,04-IG FOLYAMATOSAN ÉS UGYANABBAN A SEBESSÉGBEN NŐ MINT KÉSŐBB
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
 
@@ -623,10 +619,7 @@
           return;
         }
 
-        // Tiszta szorzás: Célráta * Eltelt óra
         var rawNeededDose = targetRate * intervalHours;
-
-        // Folyamatos növekedés a legelső percekben is (0.00 -> 0.01 -> 0.02 -> 0.03 -> 0.04 -> 0.05...)
         var formattedDose = rawNeededDose.toFixed(2).replace('.', ',');
         amtInput.value = formattedDose;
         amtInput.style.color = '#ffffff';
@@ -647,12 +640,10 @@
 
         previewBox.style.display = 'block';
 
-        // 1. Új összdózis
         var currentTotal = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
         var newTotal = currentTotal + amountVal;
         document.getElementById('prevTotal').innerText = newTotal.toFixed(2) + ' g';
 
-        // 2. Eltérés az előző adaghoz
         var last = currentStatsData.lastDose;
         if (last && last.amount) {
           var lastAmt = parseFloat(String(last.amount).replace(',', '.')) || 0;
@@ -663,7 +654,6 @@
           document.getElementById('prevDiff').innerText = '-';
         }
 
-        // 3. Szakaszi égési ráta = BEÍRT ADAG / ELŐZŐ ADAG ÓTA ELTELT IDŐ
         var intervalHours = getIntervalHoursToNow(currentStatsData);
         var currentSegmentRate = null;
 
@@ -732,6 +722,7 @@
         });
       }
 
+      // AZONNALI 0.00 MP-ES OPTIMISTIC UI MENTÉS
       function autoSubmit() {
         if (isSaving) return;
 
@@ -746,10 +737,34 @@
         var time = document.getElementById('time').value.trim();
         var wakeTime = document.getElementById('wakeTime').value.trim();
 
+        // 1. AZONNALI LOKÁLIS REAKCIÓ (0 késleltetés a kijelzőn!)
         isSaving = true;
-        amountInput.disabled = true;
-        setStatus('Mentés...', 'status-saving');
+        setStatus(amountVal + ' g rögzítve ✓', 'status-success');
+        amountInput.value = '0,00';
+        amountInput.style.color = '#ffffff';
+        isUserModified = false;
+        isManualTimeSet = false;
+        document.getElementById('livePreviewBox').style.display = 'none';
 
+        // 2. Optimistic helyi statisztika frissítés
+        if (currentStatsData) {
+          lastRecordedTimeStr = time;
+          var curTot = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
+          currentStatsData.dailyTotal = (curTot + amountVal).toFixed(2) + ' g';
+          currentStatsData.lastDose = {
+            doseNumber: (currentStatsData.allDoses ? currentStatsData.allDoses.filter(d => d.hasData).length + 1 : 1),
+            time: time,
+            amount: amountVal.toFixed(2),
+            awakeTime: '-',
+            diff: '-',
+            rate: '-'
+          };
+          updateUpperCardsOnly(currentStatsData);
+        }
+
+        setTimeout(() => { setStatus('', 'status-idle'); }, 2000);
+
+        // 3. CSENDES HÁTTÉRSZINKRONIZÁLÁS A GOOGLE SZERVERÉRE
         callApi({
           action: 'saveDose',
           sheetName: sheetName,
@@ -759,33 +774,14 @@
           wakeTime: wakeTime,
           dayType: sheetName === 'Kori' ? activeDayType : ''
         }, function(res) {
-          if (res && res.success) {
-            setStatus(amountVal + ' g rögzítve', 'status-success');
-            amountInput.disabled = false;
-            amountInput.value = '0,00';
-            amountInput.style.color = '#ffffff';
-            isUserModified = false;
-            isManualTimeSet = false;
-            document.getElementById('livePreviewBox').style.display = 'none';
-            isSaving = false;
-
-            document.getElementById('time').value = new Date().toTimeString().substring(0, 5);
-
-            if (res.stats && res.stats.found) {
-              saveToLocalCache(sheetName, dateStr, res.stats);
-              renderAllStats(res.stats);
-            }
-
-            setTimeout(() => { if (!isSaving) setStatus('', 'status-idle'); }, 2000);
-          } else {
-            setStatus('Hiba: ' + (res && res.error ? res.error : 'Ismeretlen hiba'), 'status-error');
-            amountInput.disabled = false;
-            isSaving = false;
+          isSaving = false;
+          if (res && res.success && res.stats) {
+            saveToLocalCache(sheetName, dateStr, res.stats);
+            renderAllStats(res.stats);
           }
         }, function(err) {
-          setStatus('Hiba: ' + err.message, 'status-error');
-          amountInput.disabled = false;
           isSaving = false;
+          setStatus('Hiba a szinkronizáláskor: ' + err.message, 'status-error');
         });
       }
 
