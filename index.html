@@ -722,6 +722,7 @@
         });
       }
 
+      // AZONNALI 0.00 MP-ES OPTIMISTIC UI MENTÉS (AZ ALSÓ TÁBLÁZAT IS AZONNAL FRISSÜL!)
       function autoSubmit() {
         if (isSaving) return;
 
@@ -736,6 +737,7 @@
         var time = document.getElementById('time').value.trim();
         var wakeTime = document.getElementById('wakeTime').value.trim();
 
+        // 1. AZONNALI LOKÁLIS REAKCIÓ (0 késleltetés a kijelzőn!)
         isSaving = true;
         setStatus(amountVal + ' g rögzítve ✓', 'status-success');
         amountInput.value = '0,00';
@@ -744,12 +746,32 @@
         isManualTimeSet = false;
         document.getElementById('livePreviewBox').style.display = 'none';
 
-        if (currentStatsData) {
+        // 2. AZONNAL BEÍRJUK AZ ALSÓ TÁBLÁZAT KÖVETKEZŐ ÜRES HELYÉRE IS!
+        if (currentStatsData && currentStatsData.allDoses) {
+          var targetIndex = -1;
+          for (var i = 0; i < currentStatsData.allDoses.length; i++) {
+            if (!currentStatsData.allDoses[i].hasData) {
+              targetIndex = i;
+              break;
+            }
+          }
+
+          if (targetIndex !== -1) {
+            currentStatsData.allDoses[targetIndex].time = time;
+            currentStatsData.allDoses[targetIndex].amount = amountVal.toFixed(2);
+            currentStatsData.allDoses[targetIndex].hasData = true;
+
+            var tInput = document.getElementById('t_time_' + (targetIndex + 1));
+            var aInput = document.getElementById('t_amount_' + (targetIndex + 1));
+            if (tInput) tInput.value = time;
+            if (aInput) aInput.value = amountVal.toFixed(2).replace('.', ',');
+          }
+
           lastRecordedTimeStr = time;
           var curTot = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
           currentStatsData.dailyTotal = (curTot + amountVal).toFixed(2) + ' g';
           currentStatsData.lastDose = {
-            doseNumber: (currentStatsData.allDoses ? currentStatsData.allDoses.filter(d => d.hasData).length + 1 : 1),
+            doseNumber: targetIndex !== -1 ? (targetIndex + 1) : 1,
             time: time,
             amount: amountVal.toFixed(2),
             awakeTime: '-',
@@ -759,8 +781,9 @@
           updateUpperCardsOnly(currentStatsData);
         }
 
-        setTimeout(() => { setStatus('', 'status-idle'); }, 2000);
+        setTimeout(() => { if (!isSaving) setStatus('', 'status-idle'); }, 2000);
 
+        // 3. CSENDES HÁTTÉRSZINKRONIZÁLÁS A GOOGLE FELÉ
         callApi({
           action: 'saveDose',
           sheetName: sheetName,
@@ -781,13 +804,11 @@
         });
       }
 
-      // KÉTLÉPCSŐS OKOS TÖRLÉS: 1. leütés = adag törlés, 2. leütés = időpont törlés!
       function handleTableAmountKeydown(e, doseNum) {
         if (e.key === 'Backspace' || e.key === 'Delete') {
           var aEl = document.getElementById('t_amount_' + doseNum);
           var tEl = document.getElementById('t_time_' + doseNum);
 
-          // 1. lépés: Ha van még beírt adag, az első Backspace azonnal az egész adagot üríti ki!
           if (aEl && aEl.value.trim() !== '') {
             e.preventDefault();
             aEl.value = '';
@@ -795,7 +816,6 @@
             return;
           }
 
-          // 2. lépés: Ha az adag már üres, a második Backspace kitörli a hozzátartozó időpontot is!
           if (aEl && aEl.value.trim() === '' && tEl && tEl.value.trim() !== '') {
             e.preventDefault();
             tEl.value = '';
@@ -959,8 +979,8 @@
           var item = doses[i];
           tableHtml += `
             <tr>
-              <td style="color: #666; font-size: 11px; text-align: center; width: 24px;">${item.doseNumber}</td>
-              <td style="width: 50%;">
+              <td style="color: #666; font-size: 12px; font-weight: 500; text-align: center; width: 34px; padding-left: 2px; padding-right: 6px;">${item.doseNumber}</td>
+              <td style="width: 48%; padding-right: 4px;">
                 <input 
                   type="text" 
                   id="t_time_${item.doseNumber}" 
@@ -973,7 +993,7 @@
                   onblur="onTableFieldSilentChange(${item.doseNumber})"
                 >
               </td>
-              <td style="width: 50%;">
+              <td style="width: 48%; padding-left: 4px;">
                 <input 
                   type="text" 
                   id="t_amount_${item.doseNumber}" 
