@@ -178,6 +178,13 @@
         align-items: center;
       }
 
+      /* A 3. kártya fejlécén nincs alsó vonal */
+      .card-header-noborder {
+        border-bottom: none;
+        padding-bottom: 0px;
+        margin-bottom: 4px;
+      }
+
       .stat-row {
         display: flex;
         justify-content: space-between;
@@ -208,15 +215,14 @@
         padding: 8px 0;
       }
 
-      /* Szerkesztő táblázat vonalak nélkül, azonos térközzel */
       .doses-table {
         width: 100%;
         border-collapse: collapse;
         margin-top: 2px;
       }
       .doses-table td {
-        padding: 5px 3px 6px 3px; /* A korábbi 1px vonal helye beleépítve a paddingbe */
-        border: none;             /* Szürke elválasztó vonalak teljesen eltávolítva */
+        padding: 5px 3px 6px 3px;
+        border: none;
       }
       .table-input {
         width: 100%;
@@ -319,10 +325,10 @@
       </div>
     </div>
 
-    <!-- 2. BLOKK: NAPI ADATOK ÉS ÁTLAGOK -->
+    <!-- 2. BLOKK: NAPI ÉRTÉKEK -->
     <div class="card">
       <div class="card-header">
-        <span>Napi adatok</span>
+        <span>Napi értékek</span>
         <span id="dateSubtitle" style="color: #555;"></span>
       </div>
       <div id="summaryStatsContent">
@@ -330,9 +336,9 @@
       </div>
     </div>
 
-    <!-- 3. BLOKK: SZERKESZTHETŐ TÁBLÁZAT (ELVÁLASZTÓ VONALAK NÉLKÜL) -->
+    <!-- 3. BLOKK: SZERKESZTHETŐ TÁBLÁZAT (FEJLÉC VONAL NÉLKÜL) -->
     <div class="card">
-      <div class="card-header">
+      <div class="card-header card-header-noborder">
         <span>Napi adatok</span>
       </div>
       <div id="editableDosesContent">
