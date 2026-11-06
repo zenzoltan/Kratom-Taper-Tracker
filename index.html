@@ -238,7 +238,7 @@
         <input type="date" id="doseDate" onchange="loadStats()" required>
       </div>
       <div class="form-group" style="max-width: 82px;">
-        <label for="wakeTime">Wake-up</label>
+        <label for="wakeTime">Wake</label>
         <input 
           type="text" 
           id="wakeTime" 
@@ -269,8 +269,8 @@
     </div>
 
     <div id="dayTypeContainer" class="day-type-container">
-      <button type="button" id="btnSzabadnap" class="day-type-btn active" onclick="setDayType('Szabadnap')">Day Off</button>
-      <button type="button" id="btnMunkanap" class="day-type-btn" onclick="setDayType('Munkanap')">Workday</button>
+      <button type="button" id="btnSzabadnap" class="day-type-btn active" onclick="setDayType('Szabadnap')">Off</button>
+      <button type="button" id="btnMunkanap" class="day-type-btn" onclick="setDayType('Munkanap')">Work</button>
     </div>
 
     <form id="mainDoseForm" onsubmit="event.preventDefault(); autoSubmit();" class="dose-container" onclick="handleDoseContainerClick(event)">
@@ -307,7 +307,7 @@
 
     <div class="card">
       <div class="card-header">
-        <span>Daily Stats</span>
+        <span>Values</span>
         <span id="dateSubtitle" style="color: #555;"></span>
       </div>
       <div id="summaryStatsContent">
@@ -317,7 +317,7 @@
 
     <div class="card">
       <div class="card-header card-header-noborder">
-        <span>Daily Entries</span>
+        <span>Entries</span>
       </div>
       <div id="editableDosesContent">
         <div class="loading">Loading...</div>
@@ -933,22 +933,22 @@
           lastRecordedTimeStr = last.time;
 
           lastCard.innerHTML = `
-            <div class="stat-row"><span class="stat-label">Elapsed Time</span><span id="liveElapsedDisplay" class="stat-value highlight-value">Calculating...</span></div>
-            <div class="stat-row"><span class="stat-label">Time Awake</span><span class="stat-value">${last.awakeTime}</span></div>
-            <div class="stat-row"><span class="stat-label">Diff from Previous</span><span class="stat-value">${last.diff}</span></div>
+            <div class="stat-row"><span class="stat-label">Elapsed</span><span id="liveElapsedDisplay" class="stat-value highlight-value">Calculating...</span></div>
+            <div class="stat-row"><span class="stat-label">Awake</span><span class="stat-value">${last.awakeTime}</span></div>
+            <div class="stat-row"><span class="stat-label">Diff</span><span class="stat-value">${last.diff}</span></div>
             <div class="stat-row"><span class="stat-label">Rate</span><span class="stat-value">${last.rate}</span></div>
           `;
           updateLiveElapsedTime();
         }
 
         document.getElementById('summaryStatsContent').innerHTML = `
-          <div class="stat-row"><span class="stat-label">Daily Total</span><span class="stat-value">${data.dailyTotal}</span></div>
-          <div class="stat-row"><span class="stat-label">Average Dose</span><span class="stat-value">${data.avgDose}</span></div>
-          <div class="stat-row"><span class="stat-label">Average Diff</span><span class="stat-value">${data.avgDiff}</span></div>
-          <div class="stat-row"><span class="stat-label">Average Rate</span><span class="stat-value">${data.avgRate}</span></div>
-          <div class="stat-row"><span class="stat-label">Max Dose</span><span class="stat-value">${data.maxDose}</span></div>
-          <div class="stat-row"><span class="stat-label">Dose Count</span><span class="stat-value">${data.totalDoses}</span></div>
-          <div class="stat-row"><span class="stat-label">Average Interval</span><span class="stat-value">${data.avgInterval}</span></div>
+          <div class="stat-row"><span class="stat-label">Total</span><span class="stat-value">${data.dailyTotal}</span></div>
+          <div class="stat-row"><span class="stat-label">Average</span><span class="stat-value">${data.avgDose}</span></div>
+          <div class="stat-row"><span class="stat-label">Diff</span><span class="stat-value">${data.avgDiff}</span></div>
+          <div class="stat-row"><span class="stat-label">Rate</span><span class="stat-value">${data.avgRate}</span></div>
+          <div class="stat-row"><span class="stat-label">Max</span><span class="stat-value">${data.maxDose}</span></div>
+          <div class="stat-row"><span class="stat-label">Count</span><span class="stat-value">${data.totalDoses}</span></div>
+          <div class="stat-row"><span class="stat-label">Interval</span><span class="stat-value">${data.avgInterval}</span></div>
         `;
       }
 
