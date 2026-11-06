@@ -49,13 +49,12 @@
         padding: 9px 8px;
         background: #1c1c1c;
         color: #fff;
-        border: 1px solid #2e2e2e;
+        border: none;
         border-radius: 8px;
         font-size: 13px;
         box-sizing: border-box;
       }
       input:focus, select:focus {
-        border-color: #555;
         outline: none;
       }
 
@@ -63,10 +62,9 @@
         display: none;
         margin-bottom: 12px;
         background: #181818;
-        border: 1px solid #262626;
+        border: none;
         border-radius: 8px;
         padding: 4px;
-        display: flex;
         gap: 4px;
       }
       .day-type-btn {
@@ -91,13 +89,13 @@
       .dose-container {
         margin: 10px 0 6px 0;
         background: #181818;
-        border: 1px solid #242424;
+        border: none;
         border-radius: 12px;
         padding: 16px 12px;
         text-align: center;
         cursor: pointer;
         user-select: none;
-        transition: background 0.15s, border-color 0.15s;
+        transition: background 0.15s;
       }
       .dose-container:active {
         background: #202020;
@@ -112,17 +110,16 @@
         text-align: center;
         background: #0f0f0f;
         color: #ffffff;
-        border: 1px solid #333333;
+        border: none;
         border-radius: 8px;
         outline: none;
         margin: 0 auto;
         display: block;
         cursor: text;
-        transition: border-color 0.2s, box-shadow 0.2s;
+        transition: box-shadow 0.2s;
       }
       .dose-input:focus {
-        border-color: #555555;
-        box-shadow: 0 0 10px rgba(255, 255, 255, 0.08);
+        outline: none;
       }
 
       .preview-box {
@@ -130,7 +127,7 @@
         margin-top: 10px;
         padding: 8px 10px;
         background: #1e251e;
-        border: 1px solid #2e4a2e;
+        border: none;
         border-radius: 8px;
         font-size: 12px;
         color: #a5d6a7;
@@ -160,7 +157,7 @@
       .card {
         margin-top: 12px;
         background: #181818;
-        border: 1px solid #242424;
+        border: none;
         border-radius: 12px;
         padding: 12px 14px;
       }
@@ -172,13 +169,12 @@
         color: #888;
         margin-bottom: 8px;
         padding-bottom: 6px;
-        border-bottom: 1px solid #222;
+        border-bottom: none;
         display: flex;
         justify-content: space-between;
         align-items: center;
       }
 
-      /* A 3. kártya fejlécén nincs alsó vonal */
       .card-header-noborder {
         border-bottom: none;
         padding-bottom: 0px;
@@ -229,13 +225,12 @@
         padding: 6px 4px;
         background: #121212;
         color: #fff;
-        border: 1px solid #2a2a2a;
+        border: none;
         border-radius: 6px;
         font-size: 13px;
         text-align: center;
       }
       .table-input:focus {
-        border-color: #4a90e2;
         outline: none;
       }
     </style>
@@ -336,7 +331,7 @@
       </div>
     </div>
 
-    <!-- 3. BLOKK: SZERKESZTHETŐ TÁBLÁZAT (FEJLÉC VONAL NÉLKÜL) -->
+    <!-- 3. BLOKK: SZERKESZTHETŐ TÁBLÁZAT -->
     <div class="card">
       <div class="card-header card-header-noborder">
         <span>Napi adatok</span>
@@ -724,7 +719,7 @@
 
         if (amountVal <= 0) return;
 
-        var cleanAmountString = String(amountVal).replace(',', '.');
+        var cleanAmountString = String(amountInput.value).replace(',', '.');
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
         var time = document.getElementById('time').value.trim();
@@ -997,4 +992,4 @@
       }
     </script>
   </body>
-</html>
+</html> 
