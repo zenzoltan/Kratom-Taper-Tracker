@@ -88,7 +88,6 @@
         box-shadow: 0 1px 4px rgba(0,0,0,0.5);
       }
 
-      /* Szürke doboz koppintási visszajelzéssel */
       .dose-container {
         margin: 10px 0 6px 0;
         background: #181818;
@@ -136,7 +135,7 @@
         font-size: 12px;
         color: #a5d6a7;
         text-align: left;
-        pointer-events: none; /* A koppintás átmegy a szürke dobozra */
+        pointer-events: none;
       }
       .preview-grid {
         display: flex;
@@ -209,17 +208,15 @@
         padding: 8px 0;
       }
 
+      /* Szerkesztő táblázat vonalak nélkül, azonos térközzel */
       .doses-table {
         width: 100%;
         border-collapse: collapse;
         margin-top: 2px;
       }
       .doses-table td {
-        padding: 5px 3px;
-        border-bottom: 1px solid #1f1f1f;
-      }
-      .doses-table tr:last-child td {
-        border-bottom: none;
+        padding: 5px 3px 6px 3px; /* A korábbi 1px vonal helye beleépítve a paddingbe */
+        border: none;             /* Szürke elválasztó vonalak teljesen eltávolítva */
       }
       .table-input {
         width: 100%;
@@ -279,13 +276,13 @@
       </div>
     </div>
 
-    <!-- Nap jellege választó sáv Korinál (Szabadnap vs Munkanap) -->
+    <!-- Nap jellege választó sáv Korinál -->
     <div id="dayTypeContainer" class="day-type-container">
       <button type="button" id="btnSzabadnap" class="day-type-btn active" onclick="setDayType('Szabadnap')">Szabadnap</button>
       <button type="button" id="btnMunkanap" class="day-type-btn" onclick="setDayType('Munkanap')">Munkanap</button>
     </div>
 
-    <!-- Fő beviteli doboz: a szürke részre kattintva azonnal ment, a számra kattintva gépelhetsz! -->
+    <!-- Fő beviteli doboz gyorsmentéssel -->
     <form id="mainDoseForm" onsubmit="event.preventDefault(); autoSubmit();" class="dose-container" onclick="handleDoseContainerClick(event)">
       <input 
         type="text" 
@@ -299,7 +296,7 @@
         onkeydown="handleKey(event)"
         onblur="handleBlur()"
       >
-      <!-- Valós szakaszi ráta előnézet: "Aktuális / Bázis g/ó" -->
+      <!-- Valós szakaszi ráta előnézet -->
       <div id="livePreviewBox" class="preview-box">
         <div class="preview-grid">
           <div>Össz: <span id="prevTotal" class="preview-item">-</span></div>
@@ -333,7 +330,7 @@
       </div>
     </div>
 
-    <!-- 3. BLOKK: SZERKESZTHETŐ TÁBLÁZAT -->
+    <!-- 3. BLOKK: SZERKESZTHETŐ TÁBLÁZAT (ELVÁLASZTÓ VONALAK NÉLKÜL) -->
     <div class="card">
       <div class="card-header">
         <span>Napi adatok</span>
@@ -349,7 +346,7 @@
       var lastRecordedTimeStr = null;
       var currentStatsData = null;
       var isUserModified = false;
-      var isManualTimeSet = false; // Ha a felhasználó kézzel átírta az időt, az óra nem írja felül
+      var isManualTimeSet = false;
       var activeDayType = 'Szabadnap';
 
       function formatTimeInput(el) {
@@ -435,16 +432,11 @@
         resetDateTime();
         loadStats();
 
-        // 1. ÉLŐ ÓRA: Másodpercenként csendben ellenőrzi a percugrást (villanás és reload nélkül!)
         setInterval(syncClockToLiveTime, 1000);
-
-        // 2. Eltelt idő számláló frissítése
         setInterval(updateLiveElapsedTime, 15000);
       };
 
-      // Automatikus, észrevétlen percugrás a felső időpont mezőben
       function syncClockToLiveTime() {
-        // Ha a felhasználó éppen fókuszban tartja vagy kézzel módosította az időt, nem nyúlunk hozzá!
         if (isManualTimeSet || document.activeElement === document.getElementById('time')) return;
 
         var now = new Date();
@@ -453,7 +445,6 @@
 
         if (timeInput && timeInput.value !== currentFormattedTime) {
           timeInput.value = currentFormattedTime;
-          // Frissítjük a háttérszámítást a továbblépett perchez
           if (!isUserModified && currentStatsData) {
             applyDoseRecommendation(currentStatsData);
           } else {
@@ -523,9 +514,7 @@
         isManualTimeSet = false;
       }
 
-      // KATTINTÁS A SZÜRKE NÉGYZETRE: Ha a számon kívülre koppintunk, azonnal ment!
       function handleDoseContainerClick(event) {
-        // Ha a belső beviteli mezőre koppintott, nem mentünk (engedjük gépelni)
         if (event.target === document.getElementById('amount')) return;
 
         var amountVal = getParsedAmount(document.getElementById('amount').value);
@@ -754,7 +743,6 @@
             amountInput.value = '';
             amountInput.style.color = '#ffffff';
             isUserModified = false;
-            isManualTimeSet = false; // Visszaállítjuk az élő óra követést a következő adaghoz
             document.getElementById('livePreviewBox').style.display = 'none';
             isSaving = false;
 
