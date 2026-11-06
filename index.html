@@ -88,14 +88,22 @@
         box-shadow: 0 1px 4px rgba(0,0,0,0.5);
       }
 
+      /* Szürke doboz koppintási visszajelzéssel */
       .dose-container {
         margin: 10px 0 6px 0;
         background: #181818;
         border: 1px solid #242424;
         border-radius: 12px;
-        padding: 14px 12px;
+        padding: 16px 12px;
         text-align: center;
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.15s, border-color 0.15s;
       }
+      .dose-container:active {
+        background: #202020;
+      }
+
       .dose-input {
         width: 100%;
         max-width: 160px;
@@ -110,6 +118,7 @@
         outline: none;
         margin: 0 auto;
         display: block;
+        cursor: text;
         transition: border-color 0.2s, box-shadow 0.2s;
       }
       .dose-input:focus {
@@ -127,6 +136,7 @@
         font-size: 12px;
         color: #a5d6a7;
         text-align: left;
+        pointer-events: none; /* A koppintás átmegy a szürke dobozra */
       }
       .preview-grid {
         display: flex;
@@ -262,7 +272,7 @@
           placeholder="08:20" 
           maxlength="5" 
           inputmode="numeric" 
-          oninput="formatTimeInput(this); onTimeChange();" 
+          oninput="onUserManualTimeInput(this)" 
           onblur="normalizeTimeField(this); onTimeChange();" 
           required
         >
@@ -275,16 +285,16 @@
       <button type="button" id="btnMunkanap" class="day-type-btn" onclick="setDayType('Munkanap')">Munkanap</button>
     </div>
 
-    <!-- Fő beviteli mező -->
-    <form id="mainDoseForm" onsubmit="event.preventDefault(); autoSubmit();" class="dose-container">
+    <!-- Fő beviteli doboz: a szürke részre kattintva azonnal ment, a számra kattintva gépelhetsz! -->
+    <form id="mainDoseForm" onsubmit="event.preventDefault(); autoSubmit();" class="dose-container" onclick="handleDoseContainerClick(event)">
       <input 
         type="text" 
         id="amount" 
         class="dose-input" 
         placeholder="0.00" 
-        autofocus 
         inputmode="numeric"
         enterkeyhint="done"
+        onclick="event.stopPropagation();"
         oninput="formatAmountInput(this); onUserTyping();"
         onkeydown="handleKey(event)"
         onblur="handleBlur()"
@@ -334,11 +344,12 @@
     </div>
 
     <script>
-      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwkmGh9RrwmiLK6J3Bld80q7w8a_aNOmVlpUC50DKiUzapXMhaiBoSYk3LpK_Axh7E/exec";
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzIBRLlvTMvOJ7GbiJ5wpl4OPp_tpDL13GcqZciif9OF1m832XhHFZ0wbUvAcqUH88/exec";
       var isSaving = false;
       var lastRecordedTimeStr = null;
       var currentStatsData = null;
       var isUserModified = false;
+      var isManualTimeSet = false; // Ha a felhasználó kézzel átírta az időt, az óra nem írja felül
       var activeDayType = 'Szabadnap';
 
       function formatTimeInput(el) {
@@ -348,6 +359,12 @@
         } else {
           el.value = val;
         }
+      }
+
+      function onUserManualTimeInput(el) {
+        isManualTimeSet = true;
+        formatTimeInput(el);
+        onTimeChange();
       }
 
       function normalizeTimeField(el) {
@@ -417,10 +434,33 @@
         updateDayTypeVisibility(savedProfile);
         resetDateTime();
         loadStats();
-        focusAmount();
 
-        setInterval(updateLiveElapsedTime, 30000);
+        // 1. ÉLŐ ÓRA: Másodpercenként csendben ellenőrzi a percugrást (villanás és reload nélkül!)
+        setInterval(syncClockToLiveTime, 1000);
+
+        // 2. Eltelt idő számláló frissítése
+        setInterval(updateLiveElapsedTime, 15000);
       };
+
+      // Automatikus, észrevétlen percugrás a felső időpont mezőben
+      function syncClockToLiveTime() {
+        // Ha a felhasználó éppen fókuszban tartja vagy kézzel módosította az időt, nem nyúlunk hozzá!
+        if (isManualTimeSet || document.activeElement === document.getElementById('time')) return;
+
+        var now = new Date();
+        var currentFormattedTime = now.toTimeString().substring(0, 5);
+        var timeInput = document.getElementById('time');
+
+        if (timeInput && timeInput.value !== currentFormattedTime) {
+          timeInput.value = currentFormattedTime;
+          // Frissítjük a háttérszámítást a továbblépett perchez
+          if (!isUserModified && currentStatsData) {
+            applyDoseRecommendation(currentStatsData);
+          } else {
+            onTimeOrAmountInput();
+          }
+        }
+      }
 
       function updateDayTypeVisibility(profile) {
         var container = document.getElementById('dayTypeContainer');
@@ -439,6 +479,7 @@
 
         currentStatsData = null;
         isUserModified = false;
+        isManualTimeSet = false;
         document.getElementById('livePreviewBox').style.display = 'none';
         document.getElementById('amount').value = '';
 
@@ -471,13 +512,6 @@
         });
       }
 
-      function focusAmount() {
-        var input = document.getElementById('amount');
-        if (input) {
-          input.focus();
-        }
-      }
-
       function resetDateTime() {
         var today = new Date();
         var yyyy = today.getFullYear();
@@ -486,6 +520,18 @@
         
         document.getElementById('doseDate').value = yyyy + '-' + mm + '-' + dd;
         document.getElementById('time').value = today.toTimeString().substring(0, 5);
+        isManualTimeSet = false;
+      }
+
+      // KATTINTÁS A SZÜRKE NÉGYZETRE: Ha a számon kívülre koppintunk, azonnal ment!
+      function handleDoseContainerClick(event) {
+        // Ha a belső beviteli mezőre koppintott, nem mentünk (engedjük gépelni)
+        if (event.target === document.getElementById('amount')) return;
+
+        var amountVal = getParsedAmount(document.getElementById('amount').value);
+        if (amountVal > 0 && !isSaving) {
+          autoSubmit();
+        }
       }
 
       function handleKey(e) {
@@ -525,7 +571,6 @@
         return isNaN(num) ? 0 : num;
       }
 
-      // Két adag közötti időköz órában (ez adja a tiszta égési időt!)
       function getIntervalHoursToNow(data) {
         var currentTime = document.getElementById('time').value.trim();
         if (!currentTime || currentTime.indexOf(':') === -1) return null;
@@ -551,7 +596,6 @@
         return diffMin / 60;
       }
 
-      // SZAKASZONKÉNTI ÉGÉSI RÁTA ALAPÚ DÓZISJAVASLAT
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
 
@@ -567,13 +611,11 @@
         var yMap = data.yesterdayRates;
         var baselineRate = (yMap && yMap[nextDoseNum] !== undefined) ? parseFloat(yMap[nextDoseNum]) : 1.30;
         
-        // Célráta: pontosan 0.023 g/órával kevesebb
         var targetRate = Math.max(0.1, baselineRate - 0.023);
 
         var intervalHours = getIntervalHoursToNow(data);
         if (!intervalHours || intervalHours <= 0) return;
 
-        // PURE MATH: Célráta * Eltelt időköz (Nincs mesterséges plafon!)
         var neededDose = targetRate * intervalHours;
 
         if (neededDose > 0.05) {
@@ -584,7 +626,6 @@
         }
       }
 
-      // VALÓS SZAKASZI RÁTA SZÁMÍTÁSA ÉS ÖSSZEVETÉSE A BÁZISSAL
       function onTimeOrAmountInput() {
         var raw = document.getElementById('amount').value;
         var amountVal = getParsedAmount(raw);
@@ -598,12 +639,10 @@
 
         previewBox.style.display = 'block';
 
-        // 1. Új összdózis
         var currentTotal = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
         var newTotal = currentTotal + amountVal;
         document.getElementById('prevTotal').innerText = newTotal.toFixed(2) + ' g';
 
-        // 2. Eltérés az előző adaghoz
         var last = currentStatsData.lastDose;
         if (last && last.amount) {
           var lastAmt = parseFloat(String(last.amount).replace(',', '.')) || 0;
@@ -614,7 +653,6 @@
           document.getElementById('prevDiff').innerText = '-';
         }
 
-        // 3. Szakaszi égési ráta = BEÍRT ADAG / ELŐZŐ ADAG ÓTA ELTELT IDŐ
         var intervalHours = getIntervalHoursToNow(currentStatsData);
         var currentSegmentRate = null;
 
@@ -645,7 +683,6 @@
             var baseFormatted = baselineRate.toFixed(2);
             var currentFormatted = currentSegmentRate.toFixed(2);
 
-            // Ha alacsonyabb vagy egyenlő a bázissal -> ZÖLD, ha több -> PIROS
             if (currentSegmentRate <= baselineRate) {
               rateDisplayEl.innerHTML = `<span style="color: #81c784;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #81c784;">${baseFormatted} g/ó</span>`;
             } else {
@@ -692,7 +729,7 @@
 
         if (amountVal <= 0) return;
 
-        var cleanAmountString = String(amountInput.value).replace(',', '.');
+        var cleanAmountString = String(amountVal).replace(',', '.');
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
         var time = document.getElementById('time').value.trim();
@@ -717,6 +754,7 @@
             amountInput.value = '';
             amountInput.style.color = '#ffffff';
             isUserModified = false;
+            isManualTimeSet = false; // Visszaállítjuk az élő óra követést a következő adaghoz
             document.getElementById('livePreviewBox').style.display = 'none';
             isSaving = false;
 
@@ -726,20 +764,17 @@
               saveToLocalCache(sheetName, dateStr, res.stats);
               renderAllStats(res.stats);
             }
-            focusAmount();
 
             setTimeout(() => { if (!isSaving) setStatus('', 'status-idle'); }, 2000);
           } else {
             setStatus('Hiba: ' + (res && res.error ? res.error : 'Ismeretlen hiba'), 'status-error');
             amountInput.disabled = false;
             isSaving = false;
-            focusAmount();
           }
         }, function(err) {
           setStatus('Hiba: ' + err.message, 'status-error');
           amountInput.disabled = false;
           isSaving = false;
-          focusAmount();
         });
       }
 
