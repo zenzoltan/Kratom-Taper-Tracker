@@ -1,4 +1,3 @@
-``` html
 <!DOCTYPE html>
 <html lang="hu">
   <head>
@@ -835,10 +834,46 @@
         var amtVal = aEl ? aEl.value.trim() : '';
         var cleanAmt = getParsedAmount(amtVal);
 
+        // 1. AZONNALI LOKÁLIS MEMÓRIAFRISSÍTÉS ÉS ÚJRASZÁMOLÁS (0,00 mp!)
+        if (currentStatsData && currentStatsData.allDoses) {
+          var idx = doseNum - 1;
+          if (idx >= 0 && idx < currentStatsData.allDoses.length) {
+            currentStatsData.allDoses[idx].time = timeVal;
+            currentStatsData.allDoses[idx].amount = cleanAmt > 0 ? cleanAmt.toFixed(2) : '';
+            currentStatsData.allDoses[idx].hasData = (cleanAmt > 0 || timeVal !== '');
+
+            // Napi összdózis azonnali újraszámolása helyben
+            var sumG = 0;
+            var lastD = null;
+            for (var i = 0; i < currentStatsData.allDoses.length; i++) {
+              var d = currentStatsData.allDoses[i];
+              var num = parseFloat(d.amount);
+              if (!isNaN(num) && num > 0) {
+                sumG += num;
+                lastD = d;
+              }
+            }
+            currentStatsData.dailyTotal = sumG.toFixed(2) + ' g';
+            if (lastD) {
+              lastRecordedTimeStr = lastD.time;
+              currentStatsData.lastDose = lastD;
+            } else {
+              lastRecordedTimeStr = null;
+              currentStatsData.lastDose = null;
+            }
+
+            // Felső kártyák és a javaslat azonnali frissítése a szerver megvárása nélkül!
+            updateUpperCardsOnly(currentStatsData);
+            if (!isUserModified) {
+              applyDoseRecommendation(currentStatsData);
+            }
+          }
+        }
+
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
 
-        setStatus('#' + doseNum + ' szinkronizálása...', 'status-saving');
+        setStatus('Szinkronizálás...', 'status-saving');
 
         callApi({
           action: 'saveSingleDoseSilent',
@@ -852,6 +887,9 @@
             setStatus('Mentve ✓', 'status-success');
             saveToLocalCache(sheetName, dateStr, res.stats);
             updateUpperCardsOnly(res.stats);
+            if (!isUserModified) {
+              applyDoseRecommendation(res.stats);
+            }
             setTimeout(() => { setStatus('', 'status-idle'); }, 1500);
           }
         }, function(err) {
