@@ -1,3 +1,4 @@
+``` html
 <!DOCTYPE html>
 <html lang="hu">
   <head>
@@ -141,18 +142,6 @@
       .preview-item {
         font-weight: 600;
       }
-
-      #statusMsg {
-        font-size: 13px;
-        font-weight: 500;
-        text-align: center;
-        min-height: 20px;
-        margin: 6px 0;
-      }
-      .status-idle { color: transparent; }
-      .status-saving { color: #d1a153; }
-      .status-success { color: #7cb342; }
-      .status-error { color: #e57373; }
 
       .card {
         margin-top: 12px;
@@ -306,8 +295,6 @@
         </div>
       </div>
     </form>
-
-    <div id="statusMsg" class="status-idle">Kész</div>
 
     <div class="card">
       <div class="card-header">
@@ -483,7 +470,6 @@
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
 
-        setStatus(type + ' beállítása...', 'status-saving');
         callApi({
           action: 'saveDayType',
           sheetName: sheetName,
@@ -491,14 +477,10 @@
           dayType: type
         }, function(res) {
           if (res && res.success) {
-            setStatus('Mentve ✓', 'status-success');
             saveToLocalCache(sheetName, dateStr, res.stats);
             renderAllStats(res.stats);
-            setTimeout(() => { setStatus('', 'status-idle'); }, 1500);
           }
-        }, function(err) {
-          setStatus('Hiba: ' + err.message, 'status-error');
-        });
+        }, function(err) {});
       }
 
       function resetDateTime() {
@@ -701,7 +683,6 @@
 
         if (wakeVal && wakeVal.indexOf(':') === -1) return;
 
-        setStatus('Ébredési idő mentése...', 'status-saving');
         callApi({
           action: 'saveWakeTime',
           sheetName: sheetName,
@@ -709,14 +690,10 @@
           wakeTime: wakeVal
         }, function(res) {
           if (res && res.success) {
-            setStatus('Ébredés mindkét félnél frissítve ✓', 'status-success');
             saveToLocalCache(sheetName, dateStr, res.stats);
             renderAllStats(res.stats);
-            setTimeout(() => { setStatus('', 'status-idle'); }, 2000);
           }
-        }, function(err) {
-          setStatus('Hiba: ' + err.message, 'status-error');
-        });
+        }, function(err) {});
       }
 
       function autoSubmit() {
@@ -734,7 +711,6 @@
         var wakeTime = document.getElementById('wakeTime').value.trim();
 
         isSaving = true;
-        setStatus(amountVal + ' g rögzítve ✓', 'status-success');
         amountInput.value = '0,00';
         amountInput.style.color = '#ffffff';
         isUserModified = false;
@@ -775,8 +751,6 @@
           updateUpperCardsOnly(currentStatsData);
         }
 
-        setTimeout(() => { if (!isSaving) setStatus('', 'status-idle'); }, 2000);
-
         callApi({
           action: 'saveDose',
           sheetName: sheetName,
@@ -793,7 +767,6 @@
           }
         }, function(err) {
           isSaving = false;
-          setStatus('Hiba a szinkronizáláskor: ' + err.message, 'status-error');
         });
       }
 
@@ -834,7 +807,6 @@
         var amtVal = aEl ? aEl.value.trim() : '';
         var cleanAmt = getParsedAmount(amtVal);
 
-        // 1. AZONNALI LOKÁLIS MEMÓRIAFRISSÍTÉS ÉS ÚJRASZÁMOLÁS (0,00 mp!)
         if (currentStatsData && currentStatsData.allDoses) {
           var idx = doseNum - 1;
           if (idx >= 0 && idx < currentStatsData.allDoses.length) {
@@ -842,7 +814,6 @@
             currentStatsData.allDoses[idx].amount = cleanAmt > 0 ? cleanAmt.toFixed(2) : '';
             currentStatsData.allDoses[idx].hasData = (cleanAmt > 0 || timeVal !== '');
 
-            // Napi összdózis azonnali újraszámolása helyben
             var sumG = 0;
             var lastD = null;
             for (var i = 0; i < currentStatsData.allDoses.length; i++) {
@@ -862,7 +833,6 @@
               currentStatsData.lastDose = null;
             }
 
-            // Felső kártyák és a javaslat azonnali frissítése a szerver megvárása nélkül!
             updateUpperCardsOnly(currentStatsData);
             if (!isUserModified) {
               applyDoseRecommendation(currentStatsData);
@@ -873,8 +843,6 @@
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
 
-        setStatus('Szinkronizálás...', 'status-saving');
-
         callApi({
           action: 'saveSingleDoseSilent',
           sheetName: sheetName,
@@ -884,23 +852,13 @@
           amount: cleanAmt
         }, function(res) {
           if (res && res.success) {
-            setStatus('Mentve ✓', 'status-success');
             saveToLocalCache(sheetName, dateStr, res.stats);
             updateUpperCardsOnly(res.stats);
             if (!isUserModified) {
               applyDoseRecommendation(res.stats);
             }
-            setTimeout(() => { setStatus('', 'status-idle'); }, 1500);
           }
-        }, function(err) {
-          setStatus('Hiba: ' + err.message, 'status-error');
-        });
-      }
-
-      function setStatus(text, className) {
-        var el = document.getElementById('statusMsg');
-        el.innerText = text;
-        el.className = className;
+        }, function(err) {});
       }
 
       function saveToLocalCache(sheetName, dateStr, data) {
@@ -1093,3 +1051,5 @@
     </script>
   </body>
 </html>
+
+```
