@@ -307,6 +307,8 @@
       </div>
     </form>
 
+    <div id="statusMsg" class="status-idle">Kész</div>
+
     <div class="card">
       <div class="card-header">
         <span>Latest</span>
@@ -365,6 +367,23 @@
           el.value = val.substring(0, 2) + ':' + val.substring(2, 4);
         } else {
           el.value = val;
+        }
+      }
+
+      function onTableTimeInputAuto(el, doseNum) {
+        var digits = el.value.replace(/[^0-9]/g, '');
+        if (digits.length >= 3) {
+          el.value = digits.substring(0, 2) + ':' + digits.substring(2, 4);
+        } else {
+          el.value = digits;
+        }
+
+        if (digits.length >= 4) {
+          var aEl = document.getElementById('t_amount_' + doseNum);
+          if (aEl) {
+            aEl.focus();
+            aEl.select();
+          }
         }
       }
 
@@ -815,6 +834,7 @@
             e.preventDefault();
             tEl.value = '';
             onTableFieldSilentChange(doseNum);
+            tEl.focus();
           }
         }
       }
@@ -1009,7 +1029,7 @@
                   enterkeyhint="done"
                   placeholder="00:00" 
                   value="${item.time}" 
-                  oninput="formatTimeInput(this)" 
+                  oninput="onTableTimeInputAuto(this, ${item.doseNumber})" 
                   onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
                   onblur="onTableFieldSilentChange(${item.doseNumber})"
                 >
