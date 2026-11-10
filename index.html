@@ -142,18 +142,6 @@
         font-weight: 600;
       }
 
-      #statusMsg {
-        font-size: 13px;
-        font-weight: 500;
-        text-align: center;
-        min-height: 20px;
-        margin: 6px 0;
-      }
-      .status-idle { color: transparent; }
-      .status-saving { color: #d1a153; }
-      .status-success { color: #7cb342; }
-      .status-error { color: #e57373; }
-
       .card {
         margin-top: 12px;
         background: #181818;
@@ -307,8 +295,6 @@
       </div>
     </form>
 
-    <div id="statusMsg" class="status-idle">Kész</div>
-
     <div class="card">
       <div class="card-header">
         <span>Latest</span>
@@ -381,10 +367,23 @@
         if (digits.length >= 4) {
           var aEl = document.getElementById('t_amount_' + doseNum);
           if (aEl) {
-            aEl.focus();
-            aEl.select();
+            setTimeout(function() {
+              aEl.focus();
+              aEl.select();
+            }, 30);
           }
         }
+      }
+
+      function onTableTimeBlur(el, doseNum) {
+        normalizeTimeField(el);
+        setTimeout(function() {
+          if (document.activeElement === document.getElementById('t_amount_' + doseNum)) return;
+          var aEl = document.getElementById('t_amount_' + doseNum);
+          if (aEl && getParsedAmount(aEl.value) > 0) {
+            commitAndSaveAllTableDoses();
+          }
+        }, 120);
       }
 
       function onUserManualTimeInput(el) {
@@ -759,30 +758,33 @@
         document.getElementById('livePreviewBox').style.display = 'none';
 
         if (currentStatsData && currentStatsData.allDoses) {
-          var targetIndex = -1;
+          var valid = [];
           for (var i = 0; i < currentStatsData.allDoses.length; i++) {
-            if (!currentStatsData.allDoses[i].hasData) {
-              targetIndex = i;
-              break;
+            var d = currentStatsData.allDoses[i];
+            if (d.hasData && getParsedAmount(d.amount) > 0 && d.time) {
+              valid.push({ time: d.time, amount: getParsedAmount(d.amount) });
             }
           }
+          valid.push({ time: time, amount: amountVal });
+          valid.sort(function(a, b) { return a.time.localeCompare(b.time); });
 
-          if (targetIndex !== -1) {
-            currentStatsData.allDoses[targetIndex].time = time;
-            currentStatsData.allDoses[targetIndex].amount = amountVal.toFixed(2);
-            currentStatsData.allDoses[targetIndex].hasData = true;
-
-            var tInput = document.getElementById('t_time_' + (targetIndex + 1));
-            var aInput = document.getElementById('t_amount_' + (targetIndex + 1));
-            if (tInput) tInput.value = time;
-            if (aInput) aInput.value = amountVal.toFixed(2).replace('.', ',');
+          for (var k = 1; k <= 8; k++) {
+            var tInp = document.getElementById('t_time_' + k);
+            var aInp = document.getElementById('t_amount_' + k);
+            if (k <= valid.length) {
+              if (tInp) tInp.value = valid[k - 1].time;
+              if (aInp) aInp.value = valid[k - 1].amount.toFixed(2).replace('.', ',');
+            } else {
+              if (tInp) tInp.value = '';
+              if (aInp) aInp.value = '';
+            }
           }
 
           lastRecordedTimeStr = time;
           var curTot = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
           currentStatsData.dailyTotal = (curTot + amountVal).toFixed(2) + ' g';
           currentStatsData.lastDose = {
-            doseNumber: targetIndex !== -1 ? (targetIndex + 1) : 1,
+            doseNumber: valid.length,
             time: time,
             amount: amountVal.toFixed(2),
             awakeTime: '-',
@@ -826,79 +828,95 @@
           if (aEl && aEl.value.trim() !== '') {
             e.preventDefault();
             aEl.value = '';
-            onTableFieldSilentChange(doseNum);
+            commitAndSaveAllTableDoses();
             return;
           }
 
           if (aEl && aEl.value.trim() === '' && tEl && tEl.value.trim() !== '') {
             e.preventDefault();
             tEl.value = '';
-            onTableFieldSilentChange(doseNum);
+            commitAndSaveAllTableDoses();
             tEl.focus();
           }
         }
       }
 
-      function onTableFieldSilentChange(doseNum) {
-        var tEl = document.getElementById('t_time_' + doseNum);
-        var aEl = document.getElementById('t_amount_' + doseNum);
+      function commitAndSaveAllTableDoses() {
+        var dosesList = [];
+        for (var i = 1; i <= 8; i++) {
+          var tEl = document.getElementById('t_time_' + i);
+          var aEl = document.getElementById('t_amount_' + i);
+          var tVal = tEl ? tEl.value.trim() : '';
+          var aVal = aEl ? aEl.value.trim() : '';
+          var parsedA = getParsedAmount(aVal);
+          if (parsedA > 0 && tVal && tVal.indexOf(':') !== -1) {
+            dosesList.push({
+              time: tVal,
+              amount: parsedA
+            });
+          }
+        }
 
-        normalizeTimeField(tEl);
+        dosesList.sort(function(a, b) {
+          return a.time.localeCompare(b.time);
+        });
 
-        var timeVal = tEl ? tEl.value.trim() : '';
-        var amtVal = aEl ? aEl.value.trim() : '';
-        var cleanAmt = getParsedAmount(amtVal);
+        for (var k = 1; k <= 8; k++) {
+          var tInp = document.getElementById('t_time_' + k);
+          var aInp = document.getElementById('t_amount_' + k);
+          if (k <= dosesList.length) {
+            if (tInp) tInp.value = dosesList[k - 1].time;
+            if (aInp) aInp.value = dosesList[k - 1].amount.toFixed(2).replace('.', ',');
+          } else {
+            if (tInp) tInp.value = '';
+            if (aInp) aInp.value = '';
+          }
+        }
 
-        if (currentStatsData && currentStatsData.allDoses) {
-          var idx = doseNum - 1;
-          if (idx >= 0 && idx < currentStatsData.allDoses.length) {
-            currentStatsData.allDoses[idx].time = timeVal;
-            currentStatsData.allDoses[idx].amount = cleanAmt > 0 ? cleanAmt.toFixed(2) : '';
-            currentStatsData.allDoses[idx].hasData = (cleanAmt > 0 || timeVal !== '');
-
-            var sumG = 0;
-            var lastD = null;
-            for (var i = 0; i < currentStatsData.allDoses.length; i++) {
-              var d = currentStatsData.allDoses[i];
-              var num = parseFloat(d.amount);
-              if (!isNaN(num) && num > 0) {
-                sumG += num;
-                lastD = d;
-              }
-            }
-            currentStatsData.dailyTotal = sumG.toFixed(2) + ' g';
-            if (lastD) {
-              lastRecordedTimeStr = lastD.time;
-              currentStatsData.lastDose = lastD;
+        if (currentStatsData) {
+          var sumG = 0;
+          var lastD = null;
+          currentStatsData.allDoses = [];
+          for (var j = 0; j < 8; j++) {
+            if (j < dosesList.length) {
+              sumG += dosesList[j].amount;
+              var item = {
+                doseNumber: j + 1,
+                time: dosesList[j].time,
+                amount: dosesList[j].amount.toFixed(2),
+                hasData: true
+              };
+              lastD = item;
+              currentStatsData.allDoses.push(item);
             } else {
-              lastRecordedTimeStr = null;
-              currentStatsData.lastDose = null;
-            }
-
-            updateUpperCardsOnly(currentStatsData);
-            if (!isUserModified) {
-              applyDoseRecommendation(currentStatsData);
+              currentStatsData.allDoses.push({
+                doseNumber: j + 1,
+                time: '',
+                amount: '',
+                hasData: false
+              });
             }
           }
+          currentStatsData.dailyTotal = sumG.toFixed(2) + ' g';
+          currentStatsData.lastDose = lastD;
+          if (lastD) lastRecordedTimeStr = lastD.time;
+          updateUpperCardsOnly(currentStatsData);
+          if (!isUserModified) applyDoseRecommendation(currentStatsData);
         }
 
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
 
         callApi({
-          action: 'saveSingleDoseSilent',
+          action: 'saveAllTableDoses',
           sheetName: sheetName,
           dateStr: dateStr,
-          doseNumber: doseNum,
-          time: timeVal,
-          amount: cleanAmt
+          dosesJson: JSON.stringify(dosesList)
         }, function(res) {
-          if (res && res.success) {
+          if (res && res.success && res.stats) {
             saveToLocalCache(sheetName, dateStr, res.stats);
             updateUpperCardsOnly(res.stats);
-            if (!isUserModified) {
-              applyDoseRecommendation(res.stats);
-            }
+            if (!isUserModified) applyDoseRecommendation(res.stats);
           }
         }, function(err) {});
       }
@@ -1008,6 +1026,12 @@
           document.getElementById('btnMunkanap').className = 'day-type-btn' + (activeDayType === 'Munkanap' ? ' active' : '');
         }
 
+        var activeEl = document.activeElement;
+        var isEditingTable = activeEl && activeEl.id && (activeEl.id.startsWith('t_time_') || activeEl.id.startsWith('t_amount_'));
+        if (isEditingTable) {
+          return;
+        }
+
         var doses = data.allDoses || [];
         var tableHtml = `
           <table class="doses-table">
@@ -1031,7 +1055,7 @@
                   value="${item.time}" 
                   oninput="onTableTimeInputAuto(this, ${item.doseNumber})" 
                   onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
-                  onblur="onTableFieldSilentChange(${item.doseNumber})"
+                  onblur="onTableTimeBlur(this, ${item.doseNumber})"
                 >
               </td>
               <td style="width: 48%; padding-left: 4px;">
@@ -1045,7 +1069,7 @@
                   value="${item.amount ? item.amount.replace('.', ',') : ''}" 
                   oninput="formatAmountInput(this)" 
                   onkeydown="handleTableAmountKeydown(event, ${item.doseNumber})" 
-                  onblur="onTableFieldSilentChange(${item.doseNumber})"
+                  onblur="commitAndSaveAllTableDoses()"
                 >
               </td>
             </tr>
