@@ -325,13 +325,27 @@
     </div>
 
     <script>
-      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz53wd0ozIqBzHG5V87IXLxhsQMvlB7ZlswL0C-TzqJ0iK17rJnF1ipQfjR-D8eA1E/exec";
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwkmGh9RrwmiLK6J3Bld80q7w8a_aNOmVlpUC50DKiUzapXMhaiBoSYk3LpK_Axh7E/exec";
       var isSaving = false;
       var lastRecordedTimeStr = null;
       var currentStatsData = null;
       var isUserModified = false;
       var isManualTimeSet = false;
       var activeDayType = 'Szabadnap';
+
+      function getDoseCap(dateStr) {
+        var base = new Date(2026, 10, 10);
+        var parts = (dateStr || '').split('-');
+        if (parts.length === 3) {
+          var cur = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+          var diffDays = Math.floor((cur.getTime() - base.getTime()) / (1000 * 60 * 60 * 24));
+          if (diffDays > 0) {
+            var steps = Math.floor(diffDays / 2);
+            return Math.max(0.1, 3.67 - (steps * 0.01));
+          }
+        }
+        return 3.67;
+      }
 
       function formatTimeInput(el) {
         var val = el.value.replace(/[^0-9]/g, '');
@@ -598,6 +612,12 @@
         }
 
         var rawNeededDose = targetRate * intervalHours;
+        var dateVal = document.getElementById('doseDate').value;
+        var cap = getDoseCap(dateVal);
+        if (rawNeededDose > cap) {
+          rawNeededDose = cap;
+        }
+
         var formattedDose = rawNeededDose.toFixed(2).replace('.', ',');
         amtInput.value = formattedDose;
         amtInput.style.color = '#ffffff';
@@ -1049,4 +1069,4 @@
       }
     </script>
   </body>
-</html>
+</html> 
