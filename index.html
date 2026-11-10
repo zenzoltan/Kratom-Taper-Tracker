@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
@@ -141,18 +141,6 @@
       .preview-item {
         font-weight: 600;
       }
-
-      #statusMsg {
-        font-size: 13px;
-        font-weight: 500;
-        text-align: center;
-        min-height: 20px;
-        margin: 6px 0;
-      }
-      .status-idle { color: transparent; }
-      .status-saving { color: #d1a153; }
-      .status-success { color: #7cb342; }
-      .status-error { color: #e57373; }
 
       .card {
         margin-top: 12px;
@@ -344,7 +332,6 @@
       var isUserModified = false;
       var isManualTimeSet = false;
       var activeDayType = 'Szabadnap';
-      var tableDebounceTimer = null;
 
       function getDoseCap(dateStr) {
         var base = new Date(2026, 10, 10);
@@ -991,7 +978,7 @@
 
       function saveToLocalCache(sheetName, dateStr, data) {
         try {
-          localStorage.setItem('taper_fast_cache_' + sheetName + '_' + dateStr, JSON.stringify(data));
+          localStorage.setItem('taper_fast_cache_v2_' + sheetName + '_' + dateStr, JSON.stringify(data));
         } catch(e) {}
       }
 
@@ -1000,7 +987,7 @@
         var dateStr = document.getElementById('doseDate').value;
         document.getElementById('dateSubtitle').innerText = dateStr;
 
-        var cacheKey = 'taper_fast_cache_' + sheetName + '_' + dateStr;
+        var cacheKey = 'taper_fast_cache_v2_' + sheetName + '_' + dateStr;
         var hasCachedData = false;
 
         try {
