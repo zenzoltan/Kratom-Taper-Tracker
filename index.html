@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
@@ -141,6 +141,18 @@
       .preview-item {
         font-weight: 600;
       }
+
+      #statusMsg {
+        font-size: 13px;
+        font-weight: 500;
+        text-align: center;
+        min-height: 20px;
+        margin: 6px 0;
+      }
+      .status-idle { color: transparent; }
+      .status-saving { color: #d1a153; }
+      .status-success { color: #7cb342; }
+      .status-error { color: #e57373; }
 
       .card {
         margin-top: 12px;
@@ -332,6 +344,7 @@
       var isUserModified = false;
       var isManualTimeSet = false;
       var activeDayType = 'Szabadnap';
+      var tableDebounceTimer = null;
 
       function getDoseCap(dateStr) {
         var base = new Date(2026, 10, 10);
@@ -373,17 +386,6 @@
             }, 30);
           }
         }
-      }
-
-      function onTableTimeBlur(el, doseNum) {
-        normalizeTimeField(el);
-        setTimeout(function() {
-          if (document.activeElement === document.getElementById('t_amount_' + doseNum)) return;
-          var aEl = document.getElementById('t_amount_' + doseNum);
-          if (aEl && getParsedAmount(aEl.value) > 0) {
-            commitAndSaveAllTableDoses();
-          }
-        }, 120);
       }
 
       function onUserManualTimeInput(el) {
@@ -828,20 +830,89 @@
           if (aEl && aEl.value.trim() !== '') {
             e.preventDefault();
             aEl.value = '';
-            commitAndSaveAllTableDoses();
+            triggerTableDoseSync(doseNum);
             return;
           }
 
           if (aEl && aEl.value.trim() === '' && tEl && tEl.value.trim() !== '') {
             e.preventDefault();
             tEl.value = '';
-            commitAndSaveAllTableDoses();
+            triggerTableDoseSync(doseNum);
             tEl.focus();
           }
         }
       }
 
-      function commitAndSaveAllTableDoses() {
+      function triggerTableDoseSync(doseNum) {
+        var tEl = document.getElementById('t_time_' + doseNum);
+        var aEl = document.getElementById('t_amount_' + doseNum);
+
+        normalizeTimeField(tEl);
+
+        var timeVal = tEl ? tEl.value.trim() : '';
+        var amtVal = aEl ? aEl.value.trim() : '';
+        var cleanAmt = getParsedAmount(amtVal);
+
+        if (currentStatsData && currentStatsData.allDoses) {
+          var idx = doseNum - 1;
+          if (idx >= 0 && idx < currentStatsData.allDoses.length) {
+            currentStatsData.allDoses[idx].time = timeVal;
+            currentStatsData.allDoses[idx].amount = cleanAmt > 0 ? cleanAmt.toFixed(2) : '';
+            currentStatsData.allDoses[idx].hasData = (cleanAmt > 0 || timeVal !== '');
+
+            var sumG = 0;
+            var lastD = null;
+            for (var i = 0; i < currentStatsData.allDoses.length; i++) {
+              var d = currentStatsData.allDoses[i];
+              var num = parseFloat(d.amount);
+              if (!isNaN(num) && num > 0) {
+                sumG += num;
+                lastD = d;
+              }
+            }
+            currentStatsData.dailyTotal = sumG.toFixed(2) + ' g';
+            if (lastD) {
+              lastRecordedTimeStr = lastD.time;
+              currentStatsData.lastDose = lastD;
+            } else {
+              lastRecordedTimeStr = null;
+              currentStatsData.lastDose = null;
+            }
+
+            updateUpperCardsOnly(currentStatsData);
+            if (!isUserModified) {
+              applyDoseRecommendation(currentStatsData);
+            }
+          }
+        }
+
+        var sheetName = document.getElementById('sheetName').value;
+        var dateStr = document.getElementById('doseDate').value;
+
+        callApi({
+          action: 'saveSingleDoseSilent',
+          sheetName: sheetName,
+          dateStr: dateStr,
+          doseNumber: doseNum,
+          time: timeVal,
+          amount: cleanAmt
+        }, function(res) {
+          if (res && res.success) {
+            saveToLocalCache(sheetName, dateStr, res.stats);
+            updateUpperCardsOnly(res.stats);
+            if (!isUserModified) {
+              applyDoseRecommendation(res.stats);
+            }
+          }
+        }, function(err) {});
+      }
+
+      function commitAndSortTableDoses() {
+        var activeEl = document.activeElement;
+        if (activeEl && activeEl.id && (activeEl.id.startsWith('t_time_') || activeEl.id.startsWith('t_amount_'))) {
+          return;
+        }
+
         var dosesList = [];
         for (var i = 1; i <= 8; i++) {
           var tEl = document.getElementById('t_time_' + i);
@@ -850,10 +921,7 @@
           var aVal = aEl ? aEl.value.trim() : '';
           var parsedA = getParsedAmount(aVal);
           if (parsedA > 0 && tVal && tVal.indexOf(':') !== -1) {
-            dosesList.push({
-              time: tVal,
-              amount: parsedA
-            });
+            dosesList.push({ time: tVal, amount: parsedA });
           }
         }
 
@@ -1055,7 +1123,7 @@
                   value="${item.time}" 
                   oninput="onTableTimeInputAuto(this, ${item.doseNumber})" 
                   onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
-                  onblur="onTableTimeBlur(this, ${item.doseNumber})"
+                  onblur="normalizeTimeField(this); triggerTableDoseSync(${item.doseNumber});"
                 >
               </td>
               <td style="width: 48%; padding-left: 4px;">
@@ -1067,9 +1135,9 @@
                   enterkeyhint="done"
                   placeholder="0,00" 
                   value="${item.amount ? item.amount.replace('.', ',') : ''}" 
-                  oninput="formatAmountInput(this)" 
+                  oninput="formatAmountInput(this); triggerTableDoseSync(${item.doseNumber});" 
                   onkeydown="handleTableAmountKeydown(event, ${item.doseNumber})" 
-                  onblur="commitAndSaveAllTableDoses()"
+                  onblur="triggerTableDoseSync(${item.doseNumber})"
                 >
               </td>
             </tr>
@@ -1116,4 +1184,4 @@
       }
     </script>
   </body>
-</html>
+</html> 
