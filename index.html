@@ -617,6 +617,7 @@
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
 
+        var sheetKey = document.getElementById('sheetName').value;
         var dateVal = document.getElementById('doseDate').value;
         var currentTime = document.getElementById('time').value.trim();
         var wakeVal = document.getElementById('wakeTime').value.trim();
@@ -639,27 +640,71 @@
         var targetRate = Math.max(0.1, baselineRate - 0.02);
 
         var curM = parseTimeToMinutes(currentTime);
-        var wakeM = parseTimeToMinutes(wakeVal);
-        if (curM === null || wakeM === null) return;
-
-        var diffM = curM - wakeM;
-        if (diffM <= 0) diffM += 1440;
-        var awakeHours = diffM / 60;
-
-        var currentTotal = parseFloat(String(data.dailyTotal).replace(' g', '').replace(',', '.').trim()) || 0;
-        var exactNeeded = (targetRate * awakeHours) - currentTotal;
+        if (curM === null) return;
 
         var cap = getDoseCap(dateVal);
-        var finalDose = exactNeeded;
-        if (finalDose > cap) {
-          finalDose = cap;
+
+        if (validDoses.length === 0) {
+          var wakeM = parseTimeToMinutes(wakeVal);
+          if (wakeM === null) {
+            amtInput.value = '0.00';
+            amtInput.style.color = '#ffffff';
+            lastRawRecommendation = 0;
+            onTimeOrAmountInput();
+            return;
+          }
+          var diffH1 = (curM - wakeM);
+          if (diffH1 <= 0) diffH1 += 1440;
+          diffH1 = diffH1 / 60;
+
+          var rec1 = targetRate * diffH1;
+          if (rec1 > cap) rec1 = cap;
+
+          lastRawRecommendation = rec1;
+          amtInput.value = rec1.toFixed(2);
+          amtInput.style.color = '#ffffff';
+          onTimeOrAmountInput();
+          return;
         }
 
-        lastRawRecommendation = finalDose;
-        var formattedDose = finalDose.toFixed(2);
-        amtInput.value = formattedDose;
+        var last = validDoses[validDoses.length - 1];
+        var lastM = parseTimeToMinutes(last.time);
+        if (lastM === null) return;
 
-        if (finalDose < 0) {
+        var elapsedMinFromLast = curM - lastM;
+        if (elapsedMinFromLast < 0) {
+          if (Math.abs(elapsedMinFromLast) <= 3) elapsedMinFromLast = 0;
+          else elapsedMinFromLast += 1440;
+        }
+        var elapsedHoursFromLast = elapsedMinFromLast / 60;
+
+        var storedDiffKey = 'taper_diff_' + sheetKey + '_' + dateVal + '_' + validDoses.length;
+        var savedDiffVal = localStorage.getItem(storedDiffKey);
+        var initialDelta = 0;
+
+        if (savedDiffVal !== null) {
+          var sVal = parseFloat(savedDiffVal);
+          if (!isNaN(sVal)) {
+            initialDelta = sVal;
+          }
+        }
+
+        var naturalAccrual = targetRate * elapsedHoursFromLast;
+        var netNeeded = initialDelta + naturalAccrual;
+
+        if (netNeeded > cap) {
+          netNeeded = cap;
+        }
+
+        lastRawRecommendation = netNeeded;
+        var rounded = Math.round(netNeeded * 100) / 100;
+        if (Math.abs(rounded) < 0.005) {
+          rounded = 0;
+        }
+
+        amtInput.value = rounded.toFixed(2);
+
+        if (rounded < 0) {
           amtInput.style.color = '#ef5350';
         } else {
           amtInput.style.color = '#ffffff';
@@ -770,9 +815,19 @@
         var time = document.getElementById('time').value.trim();
         var wakeTime = document.getElementById('wakeTime').value.trim();
 
+        var initialDelta = 0;
+        if (lastRawRecommendation !== null) {
+          initialDelta = lastRawRecommendation - amountVal;
+        }
+
+        var validCount = 0;
+        if (currentStatsData && currentStatsData.allDoses) {
+          validCount = currentStatsData.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length;
+        }
+        var currentDoseIndex = validCount + 1;
+        localStorage.setItem('taper_diff_' + sheetName + '_' + dateStr + '_' + currentDoseIndex, initialDelta);
+
         isSaving = true;
-        amountInput.value = '0.00';
-        amountInput.style.color = '#ffffff';
         isUserModified = false;
         isManualTimeSet = false;
         document.getElementById('livePreviewBox').style.display = 'none';
@@ -814,6 +869,7 @@
             doseNumber: valid.length,
             time: time,
             amount: amountVal.toFixed(2),
+            doseDiff: initialDelta,
             awakeTime: '-',
             diff: '-',
             rate: calculatedDoseRate
@@ -821,7 +877,13 @@
           updateUpperCardsOnly(currentStatsData);
         }
 
-        applyDoseRecommendation(currentStatsData);
+        lastRawRecommendation = initialDelta;
+        var rVal = Math.round(initialDelta * 100) / 100;
+        if (Math.abs(rVal) < 0.005) rVal = 0;
+
+        amountInput.value = rVal.toFixed(2);
+        amountInput.style.color = rVal < 0 ? '#ef5350' : '#ffffff';
+        onTimeOrAmountInput();
 
         callApi({
           action: 'saveDose',
@@ -834,6 +896,9 @@
         }, function(res) {
           isSaving = false;
           if (res && res.success && res.stats) {
+            if (currentStatsData && currentStatsData.lastDose) {
+              res.stats.lastDose.doseDiff = initialDelta;
+            }
             saveToLocalCache(sheetName, dateStr, res.stats);
             renderAllStats(res.stats);
           }
@@ -877,6 +942,8 @@
 
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
+
+        localStorage.removeItem('taper_diff_' + sheetName + '_' + dateStr + '_' + doseNum);
 
         if (currentStatsData && currentStatsData.allDoses) {
           var idx = doseNum - 1;
@@ -1077,7 +1144,7 @@
 
       function saveToLocalCache(sheetName, dateStr, data) {
         try {
-          localStorage.setItem('taper_fast_cache_v15_' + sheetName + '_' + dateStr, JSON.stringify(data));
+          localStorage.setItem('taper_fast_cache_v16_' + sheetName + '_' + dateStr, JSON.stringify(data));
         } catch(e) {}
       }
 
@@ -1086,7 +1153,7 @@
         var dateStr = document.getElementById('doseDate').value;
         document.getElementById('dateSubtitle').innerText = dateStr;
 
-        var cacheKey = 'taper_fast_cache_v15_' + sheetName + '_' + dateStr;
+        var cacheKey = 'taper_fast_cache_v16_' + sheetName + '_' + dateStr;
         var hasCachedData = false;
 
         try {
