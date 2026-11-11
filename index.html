@@ -638,10 +638,10 @@
         return diffMin / 60;
       }
 
+      // MATEMATIKAI GARANCIA: A JAVASOLT DÓZIS UTÁN A RÁTA PONTOSAN TARGETRATE LESZ
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
 
-        var sheetKey = document.getElementById('sheetName').value;
         var dateVal = document.getElementById('doseDate').value;
         var currentTime = document.getElementById('time').value.trim();
         var wakeVal = document.getElementById('wakeTime').value.trim();
@@ -665,72 +665,29 @@
         var targetRate = Math.max(0.1, baselineRate - 0.02);
 
         var curM = parseTimeToMinutes(currentTime);
-        if (curM === null) return;
+        var wakeM = parseTimeToMinutes(wakeVal);
+        if (curM === null || wakeM === null) return;
+
+        var diffM = curM - wakeM;
+        if (diffM <= 0) diffM += 1440;
+        var awakeHours = diffM / 60;
+
+        var currentTotal = parseFloat(String(data.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
+
+        // PONTOS KÉPLET: needed = (TargetRate * AwakeHours) - CurrentTotal
+        var exactNeeded = (targetRate * awakeHours) - currentTotal;
 
         var cap = getDoseCap(dateVal);
-
-        if (validDoses.length === 0) {
-          var wakeM = parseTimeToMinutes(wakeVal);
-          if (wakeM === null) {
-            amtInput.value = '0,00';
-            amtInput.style.color = '#ffffff';
-            lastRawRecommendation = 0;
-            onTimeOrAmountInput();
-            return;
-          }
-          var diffH1 = (curM - wakeM);
-          if (diffH1 <= 0) diffH1 += 1440;
-          diffH1 = diffH1 / 60;
-
-          var rec1 = targetRate * diffH1;
-          if (rec1 > cap) rec1 = cap;
-
-          lastRawRecommendation = rec1;
-          amtInput.value = rec1.toFixed(2).replace('.', ',');
-          amtInput.style.color = '#ffffff';
-          onTimeOrAmountInput();
-          return;
+        var finalDose = exactNeeded;
+        if (finalDose > cap) {
+          finalDose = cap;
         }
 
-        var last = validDoses[validDoses.length - 1];
-        var lastM = parseTimeToMinutes(last.time);
-        if (lastM === null) return;
+        lastRawRecommendation = finalDose;
+        var formattedDose = finalDose.toFixed(2).replace('.', ',');
+        amtInput.value = formattedDose;
 
-        var elapsedMinFromLast = curM - lastM;
-        if (elapsedMinFromLast < 0) {
-          if (Math.abs(elapsedMinFromLast) <= 3) elapsedMinFromLast = 0;
-          else elapsedMinFromLast += 1440;
-        }
-        var elapsedHoursFromLast = elapsedMinFromLast / 60;
-
-        var storedDiffKey = 'taper_diff_' + sheetKey + '_' + dateVal + '_' + validDoses.length;
-        var savedDiffVal = localStorage.getItem(storedDiffKey);
-        var startingOverageDebt = 0;
-
-        if (savedDiffVal !== null) {
-          var sVal = parseFloat(savedDiffVal);
-          if (!isNaN(sVal) && sVal < 0) {
-            startingOverageDebt = Math.abs(sVal);
-          }
-        }
-
-        var naturalAccrual = targetRate * elapsedHoursFromLast;
-        var netNeeded = 0;
-
-        if (startingOverageDebt > 0) {
-          netNeeded = naturalAccrual - startingOverageDebt;
-        } else {
-          netNeeded = naturalAccrual;
-        }
-
-        if (netNeeded > cap) {
-          netNeeded = cap;
-        }
-
-        lastRawRecommendation = netNeeded;
-        amtInput.value = netNeeded.toFixed(2).replace('.', ',');
-
-        if (netNeeded < 0) {
+        if (finalDose < 0) {
           amtInput.style.color = '#ef5350';
         } else {
           amtInput.style.color = '#ffffff';
@@ -745,7 +702,9 @@
         var previewBox = document.getElementById('livePreviewBox');
         var rateDisplayEl = document.getElementById('prevRateDisplay');
 
-        if (amountVal <= 0 || !currentStatsData) {
+        var isNeg = String(raw).trim().startsWith('-');
+
+        if ((amountVal <= 0 && !isNeg) || !currentStatsData) {
           previewBox.style.display = 'none';
           return;
         }
@@ -753,11 +712,11 @@
         previewBox.style.display = 'block';
 
         var currentTotal = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
-        var newTotal = currentTotal + amountVal;
+        var newTotal = isNeg ? currentTotal : (currentTotal + amountVal);
         document.getElementById('prevTotal').innerText = newTotal.toFixed(2) + ' g';
 
         var last = currentStatsData.lastDose;
-        if (last && last.amount) {
+        if (last && last.amount && !isNeg) {
           var lastAmt = parseFloat(String(last.amount).replace(',', '.')) || 0;
           var diff = (amountVal - lastAmt).toFixed(2);
           var sign = diff > 0 ? '+' : '';
@@ -796,13 +755,13 @@
             var baseFormatted = baselineRate.toFixed(2);
             var currentFormatted = resultingRate.toFixed(2);
 
-            if (resultingRate <= baselineRate) {
+            if (resultingRate <= baselineRate && !isNeg) {
               rateDisplayEl.innerHTML = `<span style="color: #81c784;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #81c784;">${baseFormatted} g/h</span>`;
             } else {
               rateDisplayEl.innerHTML = `<span style="color: #ef5350;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #888;">${baseFormatted} g/h</span>`;
             }
           } else {
-            rateDisplayEl.innerHTML = `<span style="color: #a5d6a7;">${currentSegmentRate.toFixed(2)} g/h</span>`;
+            rateDisplayEl.innerHTML = `<span style="color: #a5d6a7;">${resultingRate.toFixed(2)} g/h</span>`;
           }
         } else {
           rateDisplayEl.innerText = '-';
@@ -833,8 +792,13 @@
         if (isSaving) return;
 
         var amountInput = document.getElementById('amount');
-        var amountVal = getParsedAmount(amountInput.value);
+        var rawVal = amountInput.value.trim();
 
+        if (rawVal.startsWith('-')) {
+          return;
+        }
+
+        var amountVal = getParsedAmount(rawVal);
         if (amountVal <= 0) return;
 
         var cleanAmountString = String(amountVal).replace(',', '.');
@@ -842,19 +806,6 @@
         var dateStr = document.getElementById('doseDate').value;
         var time = document.getElementById('time').value.trim();
         var wakeTime = document.getElementById('wakeTime').value.trim();
-
-        var currentRec = (lastRawRecommendation !== null) ? lastRawRecommendation : 0;
-        var overageDebt = 0;
-        if (amountVal > currentRec) {
-          overageDebt = -(amountVal - currentRec);
-        }
-
-        var validCount = 0;
-        if (currentStatsData && currentStatsData.allDoses) {
-          validCount = currentStatsData.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length;
-        }
-        var currentDoseIndex = validCount + 1;
-        localStorage.setItem('taper_diff_' + sheetName + '_' + dateStr + '_' + currentDoseIndex, overageDebt);
 
         isSaving = true;
         isUserModified = false;
@@ -898,10 +849,7 @@
           updateUpperCardsOnly(currentStatsData);
         }
 
-        lastRawRecommendation = overageDebt;
-        amountInput.value = overageDebt.toFixed(2).replace('.', ',');
-        amountInput.style.color = overageDebt < 0 ? '#ef5350' : '#ffffff';
-        onTimeOrAmountInput();
+        applyDoseRecommendation(currentStatsData);
 
         callApi({
           action: 'saveDose',
@@ -957,8 +905,6 @@
 
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
-
-        localStorage.removeItem('taper_diff_' + sheetName + '_' + dateStr + '_' + doseNum);
 
         if (currentStatsData && currentStatsData.allDoses) {
           var idx = doseNum - 1;
@@ -1077,7 +1023,7 @@
 
       function saveToLocalCache(sheetName, dateStr, data) {
         try {
-          localStorage.setItem('taper_fast_cache_v10_' + sheetName + '_' + dateStr, JSON.stringify(data));
+          localStorage.setItem('taper_fast_cache_v11_' + sheetName + '_' + dateStr, JSON.stringify(data));
         } catch(e) {}
       }
 
@@ -1086,7 +1032,7 @@
         var dateStr = document.getElementById('doseDate').value;
         document.getElementById('dateSubtitle').innerText = dateStr;
 
-        var cacheKey = 'taper_fast_cache_v10_' + sheetName + '_' + dateStr;
+        var cacheKey = 'taper_fast_cache_v11_' + sheetName + '_' + dateStr;
         var hasCachedData = false;
 
         try {
