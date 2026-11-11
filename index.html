@@ -325,7 +325,7 @@
     </div>
 
     <script>
-      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyrqa3h7am4MYSi440lmUvEC8UBhenVFjNu9MwTDGDI54qosxeUnbXNYsOf8eX7_lk/exec";
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz4Hia9jVs004hj9k1coJoTHy_o5Q02YDrroWzILJ3a_pjFB8p9dCOLy4DABNOIl-M/exec";
       var isSaving = false;
       var lastRecordedTimeStr = null;
       var currentStatsData = null;
@@ -618,7 +618,7 @@
         if (nextDoseNum > 8) return;
 
         var yMap = data.yesterdayRates;
-        var baselineRate = (yMap && yMap[nextDoseNum] !== undefined) ? parseFloat(yMap[nextDoseNum]) : 1.28;
+        var baselineRate = (yMap && yMap[nextDoseNum] !== undefined) ? parseFloat(yMap[nextDoseNum]) : 1.25;
         var targetRate = Math.max(0.1, baselineRate - 0.02);
 
         var intervalHours = getIntervalHoursToNow(data);
@@ -630,17 +630,30 @@
           return;
         }
 
-        var rawNeededDose = targetRate * intervalHours;
-        var dateVal = document.getElementById('doseDate').value;
-        var cap = getDoseCap(dateVal);
+        var allowedTotalByInterval = targetRate * intervalHours;
+        var last = data.lastDose;
+        var netNeeded = allowedTotalByInterval;
 
-        if (rawNeededDose > cap) {
-          rawNeededDose = cap;
+        if (last && last.targetDoseAmount !== undefined) {
+          var overage = (last.actualDoseAmount || 0) - last.targetDoseAmount;
+          if (overage > 0) {
+            netNeeded = allowedTotalByInterval - overage;
+          }
         }
 
-        var formattedDose = rawNeededDose.toFixed(2).replace('.', ',');
+        var dateVal = document.getElementById('doseDate').value;
+        var cap = getDoseCap(dateVal);
+        if (netNeeded > cap) {
+          netNeeded = cap;
+        }
+
+        var formattedDose = netNeeded.toFixed(2).replace('.', ',');
         amtInput.value = formattedDose;
-        amtInput.style.color = '#ffffff';
+        if (netNeeded < 0) {
+          amtInput.style.color = '#ef5350';
+        } else {
+          amtInput.style.color = '#ffffff';
+        }
 
         onTimeOrAmountInput();
       }
@@ -749,6 +762,18 @@
         var time = document.getElementById('time').value.trim();
         var wakeTime = document.getElementById('wakeTime').value.trim();
 
+        var recTarget = 0;
+        if (currentStatsData) {
+          var cCount = currentStatsData.allDoses ? currentStatsData.allDoses.filter(d => d.hasData).length : 0;
+          var nNum = cCount + 1;
+          var bRate = (currentStatsData.yesterdayRates && currentStatsData.yesterdayRates[nNum]) ? parseFloat(currentStatsData.yesterdayRates[nNum]) : 1.25;
+          var tRate = Math.max(0.1, bRate - 0.02);
+          var intH = getIntervalHoursToNow(currentStatsData);
+          if (intH && intH > 0) {
+            recTarget = Math.min(getDoseCap(dateStr), tRate * intH);
+          }
+        }
+
         isSaving = true;
         amountInput.value = '0,00';
         amountInput.style.color = '#ffffff';
@@ -786,6 +811,8 @@
             doseNumber: valid.length,
             time: time,
             amount: amountVal.toFixed(2),
+            actualDoseAmount: amountVal,
+            targetDoseAmount: recTarget,
             awakeTime: '-',
             diff: '-',
             rate: '-'
@@ -804,6 +831,10 @@
         }, function(res) {
           isSaving = false;
           if (res && res.success && res.stats) {
+            if (currentStatsData && currentStatsData.lastDose) {
+              res.stats.lastDose.actualDoseAmount = currentStatsData.lastDose.actualDoseAmount;
+              res.stats.lastDose.targetDoseAmount = currentStatsData.lastDose.targetDoseAmount;
+            }
             saveToLocalCache(sheetName, dateStr, res.stats);
             renderAllStats(res.stats);
           }
@@ -1181,4 +1212,4 @@
       }
     </script>
   </body>
-</html> 
+</html>
