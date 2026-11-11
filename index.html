@@ -142,6 +142,18 @@
         font-weight: 600;
       }
 
+      #statusMsg {
+        font-size: 13px;
+        font-weight: 500;
+        text-align: center;
+        min-height: 20px;
+        margin: 6px 0;
+      }
+      .status-idle { color: transparent; }
+      .status-saving { color: #d1a153; }
+      .status-success { color: #7cb342; }
+      .status-error { color: #e57373; }
+
       .card {
         margin-top: 12px;
         background: #181818;
@@ -588,39 +600,6 @@
         return diff / 60;
       }
 
-      function getIntervalHoursToNow(data) {
-        var currentTime = document.getElementById('time').value.trim();
-        if (!currentTime || currentTime.indexOf(':') === -1) return null;
-
-        var last = data.lastDose;
-        var prevTime = null;
-
-        if (last && last.time) {
-          prevTime = last.time;
-        } else {
-          prevTime = document.getElementById('wakeTime').value.trim();
-        }
-
-        if (!prevTime || prevTime.indexOf(':') === -1) return null;
-
-        var p1 = prevTime.split(':');
-        var p2 = currentTime.split(':');
-        var min1 = parseInt(p1[0], 10) * 60 + parseInt(p1[1], 10);
-        var min2 = parseInt(p2[0], 10) * 60 + parseInt(p2[1], 10);
-        
-        var diffMin = min2 - min1;
-
-        if (diffMin < 0) {
-          if (Math.abs(diffMin) <= 3) {
-            diffMin = 0;
-          } else {
-            diffMin += 1440;
-          }
-        }
-
-        return diffMin / 60;
-      }
-
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
 
@@ -642,25 +621,24 @@
 
         if (awakeHours === null || awakeHours <= 0) {
           amtInput.value = '0,00';
-          amtInput.style.color = '#ffffff';
           onTimeOrAmountInput();
           return;
         }
 
         var currentTotal = parseFloat(String(data.dailyTotal).replace(' g', '').replace(',', '.')) || 0;
         var allowedTotalAtThisTime = targetRate * awakeHours;
-        var neededDose = allowedTotalAtThisTime - currentTotal;
+        var netNeeded = allowedTotalAtThisTime - currentTotal;
 
         var dateVal = document.getElementById('doseDate').value;
         var cap = getDoseCap(dateVal);
-        if (neededDose > cap) {
-          neededDose = cap;
+        if (netNeeded > cap) {
+          netNeeded = cap;
         }
 
-        var formattedDose = neededDose.toFixed(2).replace('.', ',');
+        var formattedDose = netNeeded.toFixed(2).replace('.', ',');
         amtInput.value = formattedDose;
 
-        if (neededDose < 0) {
+        if (netNeeded < 0) {
           amtInput.style.color = '#ef5350';
         } else {
           amtInput.style.color = '#ffffff';
@@ -1012,7 +990,7 @@
 
       function saveToLocalCache(sheetName, dateStr, data) {
         try {
-          localStorage.setItem('taper_fast_cache_v4_' + sheetName + '_' + dateStr, JSON.stringify(data));
+          localStorage.setItem('taper_fast_cache_v5_' + sheetName + '_' + dateStr, JSON.stringify(data));
         } catch(e) {}
       }
 
@@ -1021,7 +999,7 @@
         var dateStr = document.getElementById('doseDate').value;
         document.getElementById('dateSubtitle').innerText = dateStr;
 
-        var cacheKey = 'taper_fast_cache_v4_' + sheetName + '_' + dateStr;
+        var cacheKey = 'taper_fast_cache_v5_' + sheetName + '_' + dateStr;
         var hasCachedData = false;
 
         try {
