@@ -434,7 +434,7 @@
 
       function cleanDisplay(str) {
         if (!str) return '-';
-        return String(str).replace(/,/g, '.').replace(/g\/óra/g, 'g/h').replace(/g\/ó/g, 'g/h');
+        return String(str).replace(/,/g, '.').replace(/g\/óra/g, '').replace(/g\/ó/g, '').replace(/g\/h/g, '').trim();
       }
 
       function callApi(params, onSuccess, onError) {
@@ -603,46 +603,6 @@
       }
 
       function getBenchmarkRateForDose(data, doseNum) {
-        var profile = document.getElementById('sheetName').value;
-        var dateVal = document.getElementById('doseDate').value;
-        var rates = [];
-
-        var curParts = (dateVal || '').split('-');
-        if (curParts.length === 3) {
-          var curDateObj = new Date(parseInt(curParts[0], 10), parseInt(curParts[1], 10) - 1, parseInt(curParts[2], 10));
-          for (var i = 1; i <= 3; i++) {
-            var prevDate = new Date(curDateObj.getTime() - i * 24 * 60 * 60 * 1000);
-            var y = prevDate.getFullYear();
-            var m = String(prevDate.getMonth() + 1).padStart(2, '0');
-            var d = String(prevDate.getDate()).padStart(2, '0');
-            var pDateStr = y + '-' + m + '-' + d;
-
-            for (var v = 15; v >= 1; v--) {
-              var cKey = 'taper_fast_cache_v' + v + '_' + profile + '_' + pDateStr;
-              var cData = localStorage.getItem(cKey);
-              if (cData) {
-                try {
-                  var parsed = JSON.parse(cData);
-                  if (parsed && parsed.allDoses) {
-                    var targetDose = parsed.allDoses.find(function(it) {
-                      return parseInt(it.doseNumber, 10) === doseNum && it.hasData && getParsedAmount(it.rate) > 0;
-                    });
-                    if (targetDose) {
-                      rates.push(getParsedAmount(targetDose.rate));
-                    }
-                  }
-                } catch(e) {}
-                break;
-              }
-            }
-          }
-        }
-
-        if (rates.length > 0) {
-          var sum = rates.reduce(function(a, b) { return a + b; }, 0);
-          return sum / rates.length;
-        }
-
         if (data && data.yesterdayRates) {
           if (data.yesterdayRates[doseNum] !== undefined) {
             return parseFloat(data.yesterdayRates[doseNum]);
@@ -1117,7 +1077,7 @@
 
       function saveToLocalCache(sheetName, dateStr, data) {
         try {
-          localStorage.setItem('taper_fast_cache_v14_' + sheetName + '_' + dateStr, JSON.stringify(data));
+          localStorage.setItem('taper_fast_cache_v15_' + sheetName + '_' + dateStr, JSON.stringify(data));
         } catch(e) {}
       }
 
@@ -1126,7 +1086,7 @@
         var dateStr = document.getElementById('doseDate').value;
         document.getElementById('dateSubtitle').innerText = dateStr;
 
-        var cacheKey = 'taper_fast_cache_v14_' + sheetName + '_' + dateStr;
+        var cacheKey = 'taper_fast_cache_v15_' + sheetName + '_' + dateStr;
         var hasCachedData = false;
 
         try {
@@ -1239,11 +1199,10 @@
           document.getElementById('wakeTime').value = data.wakeTime;
         }
 
-        if (data.dayType) {
-          activeDayType = (data.dayType.toLowerCase() === 'munkanap' || data.dayType.toLowerCase() === 'dolgozós') ? 'Munkanap' : 'Szabadnap';
-          document.getElementById('btnSzabadnap').className = 'day-type-btn' + (activeDayType === 'Szabadnap' ? ' active' : '');
-          document.getElementById('btnMunkanap').className = 'day-type-btn' + (activeDayType === 'Munkanap' ? ' active' : '');
-        }
+        var activeDay = (data.dayType && (data.dayType.toLowerCase() === 'munkanap' || data.dayType.toLowerCase() === 'dolgozós' || data.dayType.toLowerCase() === 'work')) ? 'Munkanap' : 'Szabadnap';
+        activeDayType = activeDay;
+        document.getElementById('btnSzabadnap').className = 'day-type-btn' + (activeDay === 'Szabadnap' ? ' active' : '');
+        document.getElementById('btnMunkanap').className = 'day-type-btn' + (activeDay === 'Munkanap' ? ' active' : '');
 
         var activeEl = document.activeElement;
         var isEditingTable = activeEl && activeEl.id && (activeEl.id.startsWith('t_time_') || activeEl.id.startsWith('t_amount_'));
