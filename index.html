@@ -344,7 +344,7 @@
       var isUserModified = false;
       var isManualTimeSet = false;
       var activeDayType = 'Szabadnap';
-      var lastCalculatedRecDose = null; // Tárolja az aktuálisan felkínált javaslatot a pontos levonáshoz
+      var lastRawRecommendation = null;
 
       function getDoseCap(dateStr) {
         var base = new Date(2026, 10, 10);
@@ -501,7 +501,7 @@
         currentStatsData = null;
         isUserModified = false;
         isManualTimeSet = false;
-        lastCalculatedRecDose = null;
+        lastRawRecommendation = null;
         document.getElementById('livePreviewBox').style.display = 'none';
         document.getElementById('amount').value = '';
 
@@ -586,21 +586,33 @@
         return isNaN(num) ? 0 : num;
       }
 
-      function parseTimeToDate(dateStr, timeStr) {
-        var dParts = (dateStr || '').split('-');
-        var tParts = (timeStr || '').split(':');
-        if (dParts.length !== 3 || tParts.length < 2) return null;
-        var y = parseInt(dParts[0], 10);
-        var m = parseInt(dParts[1], 10) - 1;
-        var d = parseInt(dParts[2], 10);
-        var h = parseInt(tParts[0], 10);
-        var min = parseInt(tParts[1], 10);
-        return new Date(y, m, d, h, min, 0, 0);
+      function parseTimeToMinutes(timeStr) {
+        if (!timeStr || timeStr.indexOf(':') === -1) return null;
+        var parts = timeStr.split(':');
+        var h = parseInt(parts[0], 10);
+        var m = parseInt(parts[1], 10);
+        if (isNaN(h) || isNaN(m)) return null;
+        return h * 60 + m;
+      }
+
+      function getAwakeHoursToNow() {
+        var wakeVal = document.getElementById('wakeTime').value.trim();
+        var curVal = document.getElementById('time').value.trim();
+
+        var wakeM = parseTimeToMinutes(wakeVal);
+        var curM = parseTimeToMinutes(curVal);
+
+        if (wakeM === null || curM === null) return null;
+
+        var diff = curM - wakeM;
+        if (diff <= 0) diff += 1440;
+        return diff / 60;
       }
 
       function getIntervalHoursToNow(data) {
-        var currentTime = document.getElementById('time').value.trim();
-        if (!currentTime || currentTime.indexOf(':') === -1) return null;
+        var curVal = document.getElementById('time').value.trim();
+        var curM = parseTimeToMinutes(curVal);
+        if (curM === null) return null;
 
         var last = data.lastDose;
         var prevTime = null;
@@ -611,15 +623,10 @@
           prevTime = document.getElementById('wakeTime').value.trim();
         }
 
-        if (!prevTime || prevTime.indexOf(':') === -1) return null;
+        var prevM = parseTimeToMinutes(prevTime);
+        if (prevM === null) return null;
 
-        var p1 = prevTime.split(':');
-        var p2 = currentTime.split(':');
-        var min1 = parseInt(p1[0], 10) * 60 + parseInt(p1[1], 10);
-        var min2 = parseInt(p2[0], 10) * 60 + parseInt(p2[1], 10);
-        
-        var diffMin = min2 - min1;
-
+        var diffMin = curM - prevM;
         if (diffMin < 0) {
           if (Math.abs(diffMin) <= 3) {
             diffMin = 0;
@@ -631,9 +638,14 @@
         return diffMin / 60;
       }
 
-      // PONTOS KÜLÖNBSÉG ALAPÚ JAVASLAT (Javasolt - Ténylegesen beírt)
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
+
+        var sheetKey = document.getElementById('sheetName').value;
+        var dateVal = document.getElementById('doseDate').value;
+        var currentTime = document.getElementById('time').value.trim();
+        var wakeVal = document.getElementById('wakeTime').value.trim();
+        var amtInput = document.getElementById('amount');
 
         var validDoses = [];
         if (data.allDoses) {
@@ -645,90 +657,74 @@
           }
         }
 
-        var dateVal = document.getElementById('doseDate').value;
-        var currentTime = document.getElementById('time').value.trim();
-        var wakeVal = document.getElementById('wakeTime').value.trim();
+        var nextDoseNum = validDoses.length + 1;
+        if (nextDoseNum > 8) return;
+
         var yMap = data.yesterdayRates;
-        var amtInput = document.getElementById('amount');
+        var baselineRate = (yMap && yMap[nextDoseNum] !== undefined) ? parseFloat(yMap[nextDoseNum]) : 1.25;
+        var targetRate = Math.max(0.1, baselineRate - 0.02);
 
-        if (!currentTime || currentTime.indexOf(':') === -1) return;
+        var curM = parseTimeToMinutes(currentTime);
+        if (curM === null) return;
 
-        var curDateObj = parseTimeToDate(dateVal, currentTime);
-        if (!curDateObj) return;
+        var cap = getDoseCap(dateVal);
 
-        // 1. adag esete
+        // 1. adag: tiszta időarányos számítás ébredéstől
         if (validDoses.length === 0) {
-          if (!wakeVal || wakeVal.indexOf(':') === -1) {
+          var wakeM = parseTimeToMinutes(wakeVal);
+          if (wakeM === null) {
             amtInput.value = '0,00';
             amtInput.style.color = '#ffffff';
-            lastCalculatedRecDose = 0;
+            lastRawRecommendation = 0;
             onTimeOrAmountInput();
             return;
           }
-          var wakeDateObj = parseTimeToDate(dateVal, wakeVal);
-          var bRate1 = (yMap && yMap[1] !== undefined) ? parseFloat(yMap[1]) : 1.25;
-          var tRate1 = Math.max(0.1, bRate1 - 0.02);
-          var diffH1 = (curDateObj.getTime() - wakeDateObj.getTime()) / (1000 * 60 * 60);
-          if (diffH1 < 0) diffH1 += 24;
+          var diffH1 = (curM - wakeM);
+          if (diffH1 <= 0) diffH1 += 1440;
+          diffH1 = diffH1 / 60;
 
-          var rec1 = tRate1 * diffH1;
-          var cap1 = getDoseCap(dateVal);
-          if (rec1 > cap1) rec1 = cap1;
+          var rec1 = targetRate * diffH1;
+          if (rec1 > cap) rec1 = cap;
 
-          lastCalculatedRecDose = rec1;
-          var formatted1 = rec1.toFixed(2).replace('.', ',');
-          amtInput.value = formatted1;
-          amtInput.style.color = rec1 < 0 ? '#ef5350' : '#ffffff';
+          lastRawRecommendation = rec1;
+          amtInput.value = rec1.toFixed(2).replace('.', ',');
+          amtInput.style.color = '#ffffff';
           onTimeOrAmountInput();
           return;
         }
 
-        var nextDoseNum = validDoses.length + 1;
-        if (nextDoseNum > 8) return;
-
+        // 2..8. adag: Kezdő egyenleg (Javasolt - Tényleges) + eltelt idő szerinti gyarapodás
         var last = validDoses[validDoses.length - 1];
-        var lastDateObj = parseTimeToDate(dateVal, last.time);
-        if (!lastDateObj) return;
+        var lastM = parseTimeToMinutes(last.time);
+        if (lastM === null) return;
 
-        var bRateNext = (yMap && yMap[nextDoseNum] !== undefined) ? parseFloat(yMap[nextDoseNum]) : 1.25;
-        var tRateNext = Math.max(0.1, bRateNext - 0.02);
-
-        var nowMs = curDateObj.getTime();
-        var lastMs = lastDateObj.getTime();
-        var diffMs = nowMs - lastMs;
-        if (diffMs < 0) {
-          if (Math.abs(diffMs) <= 3 * 60 * 1000) {
-            diffMs = 0;
-          } else {
-            diffMs += 24 * 3600 * 1000;
-          }
+        var elapsedMinFromLast = curM - lastM;
+        if (elapsedMinFromLast < 0) {
+          if (Math.abs(elapsedMinFromLast) <= 3) elapsedMinFromLast = 0;
+          else elapsedMinFromLast += 1440;
         }
-        var elapsedHoursFromLast = diffMs / (1000 * 60 * 60);
+        var elapsedHoursFromLast = elapsedMinFromLast / 60;
 
-        // Természetes időarányos gyarapodás az utolsó adag óta
-        var naturalAccrual = tRateNext * elapsedHoursFromLast;
-
-        // Ha volt induló egyenleg (többlet vagy megtakarítás az előző adagból)
+        // Betöltjük a mentés pillanatában keletkezett pontos különbséget (pl. 2.5 - 2.7 = -0.2)
         var startingBalance = 0;
-        if (last.initialBalance !== undefined) {
-          startingBalance = last.initialBalance;
-        } else {
-          var sheetKey = document.getElementById('sheetName').value;
-          var savedBal = localStorage.getItem('taper_last_balance_' + sheetKey + '_' + dateVal);
-          if (savedBal !== null) {
-            startingBalance = parseFloat(savedBal) || 0;
-          }
+        var storedDiffKey = 'taper_diff_' + sheetKey + '_' + dateVal + '_' + validDoses.length;
+        var savedDiffVal = localStorage.getItem(storedDiffKey);
+
+        if (savedDiffVal !== null) {
+          startingBalance = parseFloat(savedDiffVal);
+        } else if (last.doseDiff !== undefined) {
+          startingBalance = last.doseDiff;
         }
 
-        var netNeeded = startingBalance + naturalAccrual;
-        var cap = getDoseCap(dateVal);
+        // Tiszta növekedés: Kezdő egyenleg + (célráta * eltelt óra)
+        var netNeeded = startingBalance + (targetRate * elapsedHoursFromLast);
+
         if (netNeeded > cap) {
           netNeeded = cap;
         }
 
-        lastCalculatedRecDose = netNeeded;
-        var formattedDose = netNeeded.toFixed(2).replace('.', ',');
-        amtInput.value = formattedDose;
+        lastRawRecommendation = netNeeded;
+        amtInput.value = netNeeded.toFixed(2).replace('.', ',');
 
         if (netNeeded < 0) {
           amtInput.style.color = '#ef5350';
@@ -829,7 +825,6 @@
         }, function(err) {});
       }
 
-      // RÖGZÍTÉS UTÁN: PONTOS EGYENLEG-SZÁMÍTÁS (Javasolt - Ténylegesen beírt)
       function autoSubmit() {
         if (isSaving) return;
 
@@ -844,12 +839,16 @@
         var time = document.getElementById('time').value.trim();
         var wakeTime = document.getElementById('wakeTime').value.trim();
 
-        // Pontos egyenleg: Javasolt - Megevett (pl. 2.5 - 2.7 = -0.2, vagy 0.64 - 1.64 = -1.0)
-        var startingDiff = 0;
-        if (lastCalculatedRecDose !== null) {
-          startingDiff = lastCalculatedRecDose - amountVal;
+        // Pontos kezdeti egyenleg rögzítése: Javasolt - Megevett
+        var currentRec = (lastRawRecommendation !== null) ? lastRawRecommendation : 0;
+        var doseDiff = currentRec - amountVal;
+
+        var validCount = 0;
+        if (currentStatsData && currentStatsData.allDoses) {
+          validCount = currentStatsData.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length;
         }
-        localStorage.setItem('taper_last_balance_' + sheetName + '_' + dateStr, startingDiff);
+        var currentDoseIndex = validCount + 1;
+        localStorage.setItem('taper_diff_' + sheetName + '_' + dateStr + '_' + currentDoseIndex, doseDiff);
 
         isSaving = true;
         isUserModified = false;
@@ -886,7 +885,7 @@
             doseNumber: valid.length,
             time: time,
             amount: amountVal.toFixed(2),
-            initialBalance: startingDiff,
+            doseDiff: doseDiff,
             awakeTime: '-',
             diff: '-',
             rate: '-'
@@ -894,10 +893,10 @@
           updateUpperCardsOnly(currentStatsData);
         }
 
-        // Azonnal beállítjuk a mezőt a pontos maradék egyenlegre!
-        lastCalculatedRecDose = startingDiff;
-        amountInput.value = startingDiff.toFixed(2).replace('.', ',');
-        amountInput.style.color = startingDiff < 0 ? '#ef5350' : '#ffffff';
+        // Azonnal beállítjuk a mezőt az új differenciára (pl. -0.77 vagy +0.50)
+        lastRawRecommendation = doseDiff;
+        amountInput.value = doseDiff.toFixed(2).replace('.', ',');
+        amountInput.style.color = doseDiff < 0 ? '#ef5350' : '#ffffff';
         onTimeOrAmountInput();
 
         callApi({
@@ -912,7 +911,7 @@
           isSaving = false;
           if (res && res.success && res.stats) {
             if (currentStatsData && currentStatsData.lastDose) {
-              res.stats.lastDose.initialBalance = startingDiff;
+              res.stats.lastDose.doseDiff = doseDiff;
             }
             saveToLocalCache(sheetName, dateStr, res.stats);
             renderAllStats(res.stats);
@@ -937,17 +936,77 @@
           if (aEl && aEl.value.trim() !== '') {
             e.preventDefault();
             aEl.value = '';
-            triggerTableDoseSync(doseNum);
+            executeEntryDeletion(doseNum);
             return;
           }
 
           if (aEl && aEl.value.trim() === '' && tEl && tEl.value.trim() !== '') {
             e.preventDefault();
             tEl.value = '';
-            triggerTableDoseSync(doseNum);
+            executeEntryDeletion(doseNum);
             tEl.focus();
           }
         }
+      }
+
+      // BIZTOS TÖRLÉS: Azonnal törli a helyi gyorsítótárból és a szerverről is!
+      function executeEntryDeletion(doseNum) {
+        var tEl = document.getElementById('t_time_' + doseNum);
+        var aEl = document.getElementById('t_amount_' + doseNum);
+        if (aEl) aEl.value = '';
+
+        var sheetName = document.getElementById('sheetName').value;
+        var dateStr = document.getElementById('doseDate').value;
+
+        // Töröljük a differencia emlékezetét erre az adagra
+        localStorage.removeItem('taper_diff_' + sheetName + '_' + dateStr + '_' + doseNum);
+
+        // Helyi állapot azonnali tisztítása
+        if (currentStatsData && currentStatsData.allDoses) {
+          var idx = doseNum - 1;
+          if (idx >= 0 && idx < currentStatsData.allDoses.length) {
+            currentStatsData.allDoses[idx].amount = '';
+            currentStatsData.allDoses[idx].hasData = false;
+            if (tEl && tEl.value.trim() === '') {
+              currentStatsData.allDoses[idx].time = '';
+            }
+          }
+
+          // Összegzés újraszámolása
+          var sum = 0;
+          var lastD = null;
+          for (var i = 0; i < currentStatsData.allDoses.length; i++) {
+            var it = currentStatsData.allDoses[i];
+            var aNum = getParsedAmount(it.amount);
+            if (it.hasData && aNum > 0) {
+              sum += aNum;
+              lastD = it;
+            }
+          }
+          currentStatsData.dailyTotal = sum.toFixed(2) + ' g';
+          currentStatsData.lastDose = lastD;
+          if (lastD) lastRecordedTimeStr = lastD.time;
+          else lastRecordedTimeStr = null;
+
+          saveToLocalCache(sheetName, dateStr, currentStatsData);
+          updateUpperCardsOnly(currentStatsData);
+          if (!isUserModified) applyDoseRecommendation(currentStatsData);
+        }
+
+        // Törlés kiküldése a szerverre
+        callApi({
+          action: 'saveSingleDoseSilent',
+          sheetName: sheetName,
+          dateStr: dateStr,
+          doseNumber: doseNum,
+          time: tEl ? tEl.value.trim() : '',
+          amount: 0
+        }, function(res) {
+          if (res && res.success && res.stats) {
+            saveToLocalCache(sheetName, dateStr, res.stats);
+            renderAllStats(res.stats);
+          }
+        }, function(err) {});
       }
 
       function triggerTableDoseSync(doseNum) {
@@ -960,12 +1019,20 @@
         var amtVal = aEl ? aEl.value.trim() : '';
         var cleanAmt = getParsedAmount(amtVal);
 
+        if (cleanAmt <= 0 && (!amtVal || amtVal.trim() === '')) {
+          executeEntryDeletion(doseNum);
+          return;
+        }
+
+        var sheetName = document.getElementById('sheetName').value;
+        var dateStr = document.getElementById('doseDate').value;
+
         if (currentStatsData && currentStatsData.allDoses) {
           var idx = doseNum - 1;
           if (idx >= 0 && idx < currentStatsData.allDoses.length) {
             currentStatsData.allDoses[idx].time = timeVal;
             currentStatsData.allDoses[idx].amount = cleanAmt > 0 ? cleanAmt.toFixed(2) : '';
-            currentStatsData.allDoses[idx].hasData = (cleanAmt > 0 || timeVal !== '');
+            currentStatsData.allDoses[idx].hasData = (cleanAmt > 0);
 
             var sumG = 0;
             var lastD = null;
@@ -986,20 +1053,13 @@
               currentStatsData.lastDose = null;
             }
 
-            // Helyi gyorsítótár azonnali frissítése a törlés után!
-            var sheetKey = document.getElementById('sheetName').value;
-            var curDate = document.getElementById('doseDate').value;
-            saveToLocalCache(sheetKey, curDate, currentStatsData);
-
+            saveToLocalCache(sheetName, dateStr, currentStatsData);
             updateUpperCardsOnly(currentStatsData);
             if (!isUserModified) {
               applyDoseRecommendation(currentStatsData);
             }
           }
         }
-
-        var sheetName = document.getElementById('sheetName').value;
-        var dateStr = document.getElementById('doseDate').value;
 
         callApi({
           action: 'saveSingleDoseSilent',
@@ -1021,7 +1081,7 @@
 
       function saveToLocalCache(sheetName, dateStr, data) {
         try {
-          localStorage.setItem('taper_fast_cache_v8_' + sheetName + '_' + dateStr, JSON.stringify(data));
+          localStorage.setItem('taper_fast_cache_v9_' + sheetName + '_' + dateStr, JSON.stringify(data));
         } catch(e) {}
       }
 
@@ -1030,7 +1090,7 @@
         var dateStr = document.getElementById('doseDate').value;
         document.getElementById('dateSubtitle').innerText = dateStr;
 
-        var cacheKey = 'taper_fast_cache_v8_' + sheetName + '_' + dateStr;
+        var cacheKey = 'taper_fast_cache_v9_' + sheetName + '_' + dateStr;
         var hasCachedData = false;
 
         try {
