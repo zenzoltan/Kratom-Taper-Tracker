@@ -642,6 +642,17 @@
           }
         }
 
+        var cap = getDoseCap(dateVal);
+
+        // 1. DÓZIS: Nincs semmilyen számítás, azonnal a fix maximumot mutatja ébredéstől kezdve!
+        if (validDoses.length === 0) {
+          lastRawRecommendation = cap;
+          amtInput.value = cap.toFixed(2);
+          amtInput.style.color = '#ffffff';
+          onTimeOrAmountInput();
+          return;
+        }
+
         var nextDoseNum = validDoses.length + 1;
         if (nextDoseNum > 8) return;
 
@@ -659,7 +670,6 @@
         var currentTotal = parseFloat(String(data.dailyTotal).replace(' g', '').replace(',', '.').trim()) || 0;
         var exactNeeded = (targetRate * awakeHours) - currentTotal;
 
-        var cap = getDoseCap(dateVal);
         var finalDose = exactNeeded;
         if (finalDose > cap) {
           finalDose = cap;
@@ -722,6 +732,13 @@
             }
           }
           var nextDoseNum = currentRecordedCount + 1;
+
+          // 1. DÓZISNÁL NINCS RÁTA-ÖSSZEHASONLÍTÁS (NEM SZÁMOL G/Ó-T)
+          if (nextDoseNum === 1) {
+            rateDisplayEl.innerHTML = `<span style="color: #ffffff;">${resultingRate.toFixed(2)} g/h</span>`;
+            return;
+          }
+
           var baselineRate = getBenchmarkRateForDose(currentStatsData, nextDoseNum);
 
           if (baselineRate !== null && !isNaN(baselineRate) && baselineRate > 0) {
@@ -781,6 +798,8 @@
         var wakeTime = document.getElementById('wakeTime').value.trim();
 
         isSaving = true;
+        amountInput.value = '0.00';
+        amountInput.style.color = '#ffffff';
         isUserModified = false;
         isManualTimeSet = false;
         document.getElementById('livePreviewBox').style.display = 'none';
@@ -1085,7 +1104,7 @@
 
       function saveToLocalCache(sheetName, dateStr, data) {
         try {
-          localStorage.setItem('taper_fast_cache_v17_' + sheetName + '_' + dateStr, JSON.stringify(data));
+          localStorage.setItem('taper_fast_cache_v18_' + sheetName + '_' + dateStr, JSON.stringify(data));
         } catch(e) {}
       }
 
@@ -1094,7 +1113,7 @@
         var dateStr = document.getElementById('doseDate').value;
         document.getElementById('dateSubtitle').innerText = dateStr;
 
-        var cacheKey = 'taper_fast_cache_v17_' + sheetName + '_' + dateStr;
+        var cacheKey = 'taper_fast_cache_v18_' + sheetName + '_' + dateStr;
         var hasCachedData = false;
 
         try {
@@ -1162,7 +1181,11 @@
 
           var lastRateVal = getParsedAmount(last.rate);
           var lastRateColor = '#ffffff';
-          if (lastRateVal > 0 && benchmarkRate > 0) {
+
+          // Ha az 1. adagról van szó, a ráta mindig sima fehér
+          if (parseInt(last.doseNumber, 10) === 1) {
+            lastRateColor = '#ffffff';
+          } else if (lastRateVal > 0 && benchmarkRate > 0) {
             if (lastRateVal > benchmarkRate) {
               lastRateColor = '#ef5350';
             } else {
