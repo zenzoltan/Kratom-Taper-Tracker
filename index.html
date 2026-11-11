@@ -584,6 +584,18 @@
         return isNaN(num) ? 0 : num;
       }
 
+      function parseTimeToDate(dateStr, timeStr) {
+        var dParts = (dateStr || '').split('-');
+        var tParts = (timeStr || '').split(':');
+        if (dParts.length !== 3 || tParts.length < 2) return null;
+        var y = parseInt(dParts[0], 10);
+        var m = parseInt(dParts[1], 10) - 1;
+        var d = parseInt(dParts[2], 10);
+        var h = parseInt(tParts[0], 10);
+        var min = parseInt(tParts[1], 10);
+        return new Date(y, m, d, h, min, 0, 0);
+      }
+
       function getIntervalHoursToNow(data) {
         var currentTime = document.getElementById('time').value.trim();
         if (!currentTime || currentTime.indexOf(':') === -1) return null;
@@ -620,40 +632,90 @@
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
 
-        var currentRecordedCount = 0;
+        var validDoses = [];
         if (data.allDoses) {
           for (var d = 0; d < data.allDoses.length; d++) {
-            if (data.allDoses[d].hasData) currentRecordedCount++;
-          }
-        }
-        var nextDoseNum = currentRecordedCount + 1;
-        if (nextDoseNum > 8) return;
-
-        var yMap = data.yesterdayRates;
-        var baselineRate = (yMap && yMap[nextDoseNum] !== undefined) ? parseFloat(yMap[nextDoseNum]) : 1.25;
-        var targetRate = Math.max(0.1, baselineRate - 0.02);
-
-        var intervalHours = getIntervalHoursToNow(data);
-        var amtInput = document.getElementById('amount');
-
-        if (intervalHours === null || intervalHours < 0) {
-          amtInput.value = '0,00';
-          onTimeOrAmountInput();
-          return;
-        }
-
-        var allowedTotalAtThisTime = targetRate * intervalHours;
-        var last = data.lastDose;
-        var netNeeded = allowedTotalAtThisTime;
-
-        if (last && last.targetDoseAmount !== undefined) {
-          var overage = (last.actualDoseAmount || 0) - last.targetDoseAmount;
-          if (overage > 0) {
-            netNeeded = allowedTotalAtThisTime - overage;
+            var item = data.allDoses[d];
+            if (item.hasData && getParsedAmount(item.amount) > 0 && item.time) {
+              validDoses.push(item);
+            }
           }
         }
 
         var dateVal = document.getElementById('doseDate').value;
+        var currentTime = document.getElementById('time').value.trim();
+        var wakeVal = document.getElementById('wakeTime').value.trim();
+        var yMap = data.yesterdayRates;
+        var amtInput = document.getElementById('amount');
+
+        if (!currentTime || currentTime.indexOf(':') === -1) return;
+
+        var curDateObj = parseTimeToDate(dateVal, currentTime);
+        if (!curDateObj) return;
+
+        if (validDoses.length === 0) {
+          if (!wakeVal || wakeVal.indexOf(':') === -1) {
+            amtInput.value = '0,00';
+            amtInput.style.color = '#ffffff';
+            onTimeOrAmountInput();
+            return;
+          }
+          var wakeDateObj = parseTimeToDate(dateVal, wakeVal);
+          var bRate1 = (yMap && yMap[1] !== undefined) ? parseFloat(yMap[1]) : 1.25;
+          var tRate1 = Math.max(0.1, bRate1 - 0.02);
+          var diffH1 = (curDateObj.getTime() - wakeDateObj.getTime()) / (1000 * 60 * 60);
+          if (diffH1 < 0) diffH1 += 24;
+
+          var rec1 = tRate1 * diffH1;
+          var cap1 = getDoseCap(dateVal);
+          if (rec1 > cap1) rec1 = cap1;
+
+          var formatted1 = rec1.toFixed(2).replace('.', ',');
+          amtInput.value = formatted1;
+          amtInput.style.color = rec1 < 0 ? '#ef5350' : '#ffffff';
+          onTimeOrAmountInput();
+          return;
+        }
+
+        var nextDoseNum = validDoses.length + 1;
+        if (nextDoseNum > 8) return;
+
+        var last = validDoses[validDoses.length - 1];
+        var prevTime = (validDoses.length === 1) ? wakeVal : validDoses[validDoses.length - 2].time;
+
+        if (!prevTime || prevTime.indexOf(':') === -1) {
+          prevTime = wakeVal;
+        }
+
+        var prevDateObj = parseTimeToDate(dateVal, prevTime);
+        var lastDateObj = parseTimeToDate(dateVal, last.time);
+        if (!prevDateObj || !lastDateObj) return;
+
+        if (lastDateObj.getTime() < prevDateObj.getTime()) {
+          lastDateObj = new Date(lastDateObj.getTime() + 24 * 60 * 60 * 1000);
+        }
+
+        var lastDoseNum = validDoses.length;
+        var bRateLast = (yMap && yMap[lastDoseNum] !== undefined) ? parseFloat(yMap[lastDoseNum]) : 1.25;
+        var tRateLast = Math.max(0.1, bRateLast - 0.02);
+
+        var actualLastAmt = getParsedAmount(last.amount);
+        var hoursRequiredForLast = actualLastAmt / tRateLast;
+        var targetBurnDateObj = new Date(prevDateObj.getTime() + hoursRequiredForLast * 3600 * 1000);
+
+        var effectiveBurnMs = targetBurnDateObj.getTime();
+
+        var bRateNext = (yMap && yMap[nextDoseNum] !== undefined) ? parseFloat(yMap[nextDoseNum]) : 1.25;
+        var tRateNext = Math.max(0.1, bRateNext - 0.02);
+
+        var nowMs = curDateObj.getTime();
+        if (nowMs < lastDateObj.getTime() && (lastDateObj.getTime() - nowMs) < 6 * 3600 * 1000) {
+          nowMs += 24 * 3600 * 1000;
+        }
+
+        var diffHoursFromBurn = (nowMs - effectiveBurnMs) / (1000 * 60 * 60);
+        var netNeeded = tRateNext * diffHoursFromBurn;
+
         var cap = getDoseCap(dateVal);
         if (netNeeded > cap) {
           netNeeded = cap;
@@ -698,14 +760,14 @@
           document.getElementById('prevDiff').innerText = '-';
         }
 
-        var intervalHours = getIntervalHoursToNow(currentStatsData);
-        var currentSegmentRate = null;
+        var awakeHours = getAwakeHoursToNow();
+        var resultingRate = null;
 
-        if (intervalHours && intervalHours > 0) {
-          currentSegmentRate = parseFloat((amountVal / intervalHours).toFixed(2));
+        if (awakeHours && awakeHours > 0) {
+          resultingRate = parseFloat((newTotal / awakeHours).toFixed(2));
         }
 
-        if (currentSegmentRate !== null && !isNaN(currentSegmentRate)) {
+        if (resultingRate !== null && !isNaN(resultingRate)) {
           var currentRecordedCount = 0;
           if (currentStatsData.allDoses) {
             for (var d = 0; d < currentStatsData.allDoses.length; d++) {
@@ -726,15 +788,15 @@
 
           if (baselineRate !== null && !isNaN(baselineRate) && baselineRate > 0) {
             var baseFormatted = baselineRate.toFixed(2);
-            var currentFormatted = currentSegmentRate.toFixed(2);
+            var currentFormatted = resultingRate.toFixed(2);
 
-            if (currentSegmentRate <= baselineRate) {
+            if (resultingRate <= baselineRate) {
               rateDisplayEl.innerHTML = `<span style="color: #81c784;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #81c784;">${baseFormatted} g/h</span>`;
             } else {
               rateDisplayEl.innerHTML = `<span style="color: #ef5350;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #888;">${baseFormatted} g/h</span>`;
             }
           } else {
-            rateDisplayEl.innerHTML = `<span style="color: #a5d6a7;">${currentSegmentRate.toFixed(2)} g/h</span>`;
+            rateDisplayEl.innerHTML = `<span style="color: #a5d6a7;">${resultingRate.toFixed(2)} g/h</span>`;
           }
         } else {
           rateDisplayEl.innerText = '-';
@@ -775,24 +837,6 @@
         var time = document.getElementById('time').value.trim();
         var wakeTime = document.getElementById('wakeTime').value.trim();
 
-        var recTarget = 0;
-        if (currentStatsData) {
-          var cCount = currentStatsData.allDoses ? currentStatsData.allDoses.filter(d => d.hasData).length : 0;
-          var nNum = cCount + 1;
-          var bRate = (currentStatsData.yesterdayRates && currentStatsData.yesterdayRates[nNum]) ? parseFloat(currentStatsData.yesterdayRates[nNum]) : 1.25;
-          var tRate = Math.max(0.1, bRate - 0.02);
-          var intH = getIntervalHoursToNow(currentStatsData);
-          if (intH && intH > 0) {
-            var allowedByInt = tRate * intH;
-            var prevOver = 0;
-            if (currentStatsData.lastDose && currentStatsData.lastDose.targetDoseAmount !== undefined) {
-              var diffO = (currentStatsData.lastDose.actualDoseAmount || 0) - currentStatsData.lastDose.targetDoseAmount;
-              if (diffO > 0) prevOver = diffO;
-            }
-            recTarget = Math.max(0, allowedByInt - prevOver);
-          }
-        }
-
         isSaving = true;
         amountInput.value = '0,00';
         amountInput.style.color = '#ffffff';
@@ -830,8 +874,6 @@
             doseNumber: valid.length,
             time: time,
             amount: amountVal.toFixed(2),
-            actualDoseAmount: amountVal,
-            targetDoseAmount: recTarget,
             awakeTime: '-',
             diff: '-',
             rate: '-'
@@ -850,10 +892,6 @@
         }, function(res) {
           isSaving = false;
           if (res && res.success && res.stats) {
-            if (currentStatsData && currentStatsData.lastDose) {
-              res.stats.lastDose.actualDoseAmount = currentStatsData.lastDose.actualDoseAmount;
-              res.stats.lastDose.targetDoseAmount = currentStatsData.lastDose.targetDoseAmount;
-            }
             saveToLocalCache(sheetName, dateStr, res.stats);
             renderAllStats(res.stats);
           }
@@ -1038,7 +1076,7 @@
 
       function saveToLocalCache(sheetName, dateStr, data) {
         try {
-          localStorage.setItem('taper_fast_cache_v6_' + sheetName + '_' + dateStr, JSON.stringify(data));
+          localStorage.setItem('taper_fast_cache_v7_' + sheetName + '_' + dateStr, JSON.stringify(data));
         } catch(e) {}
       }
 
@@ -1047,7 +1085,7 @@
         var dateStr = document.getElementById('doseDate').value;
         document.getElementById('dateSubtitle').innerText = dateStr;
 
-        var cacheKey = 'taper_fast_cache_v6_' + sheetName + '_' + dateStr;
+        var cacheKey = 'taper_fast_cache_v7_' + sheetName + '_' + dateStr;
         var hasCachedData = false;
 
         try {
@@ -1182,7 +1220,7 @@
                   enterkeyhint="done"
                   placeholder="0,00" 
                   value="${item.amount ? item.amount.replace('.', ',') : ''}" 
-                  oninput="formatAmountInput(this); triggerTableDoseSync(${item.doseNumber});" 
+                  oninput="formatAmountInput(this)" 
                   onkeydown="handleTableAmountKeydown(event, ${item.doseNumber})" 
                   onblur="triggerTableDoseSync(${item.doseNumber})"
                 >
