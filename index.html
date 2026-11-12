@@ -59,7 +59,7 @@
       }
 
       .day-type-container {
-        display: flex;
+        display: none;
         margin-bottom: 12px;
         background: #181818;
         border: none;
@@ -671,7 +671,6 @@
           if (Math.abs(elapsedMinFromLast) <= 3) elapsedMinFromLast = 0;
           else elapsedMinFromLast += 1440;
         }
-        var elapsedHoursFromLast = elapsedMinFromLast / 60;
 
         // 2..8. DÓZIS: Az 1. adagból NEM viszünk át adósságot/mínuszt (initialDelta = 0)!
         var initialDelta = 0;
@@ -686,8 +685,20 @@
           }
         }
 
+        var elapsedHoursFromLast = elapsedMinFromLast / 60;
         var naturalAccrual = targetRate * elapsedHoursFromLast;
         var netNeeded = initialDelta + naturalAccrual;
+
+        // VÉDELEM: Az első 5 percben vagy amíg bármilyen pozitív szám a célrátát túllépné, stagnáljon 0.00-án
+        if (elapsedMinFromLast <= 5 && initialDelta >= 0) {
+          netNeeded = 0;
+        } else if (netNeeded > 0 && elapsedHoursFromLast > 0) {
+          var resultingRateIfConsumed = netNeeded / elapsedHoursFromLast;
+          var targetLimit = Math.round((baselineRate - 0.02) * 100) / 100;
+          if (resultingRateIfConsumed > targetLimit) {
+            netNeeded = targetLimit * elapsedHoursFromLast;
+          }
+        }
 
         if (netNeeded > cap) {
           netNeeded = cap;
@@ -1157,7 +1168,7 @@
 
       function saveToLocalCache(sheetName, dateStr, data) {
         try {
-          localStorage.setItem('taper_fast_cache_v22_' + sheetName + '_' + dateStr, JSON.stringify(data));
+          localStorage.setItem('taper_fast_cache_v23_' + sheetName + '_' + dateStr, JSON.stringify(data));
         } catch(e) {}
       }
 
@@ -1166,7 +1177,7 @@
         var dateStr = document.getElementById('doseDate').value;
         document.getElementById('dateSubtitle').innerText = dateStr;
 
-        var cacheKey = 'taper_fast_cache_v22_' + sheetName + '_' + dateStr;
+        var cacheKey = 'taper_fast_cache_v23_' + sheetName + '_' + dateStr;
         var hasCachedData = false;
 
         try {
