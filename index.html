@@ -463,6 +463,7 @@
         var savedProfile = localStorage.getItem('taper_active_profile') || 'Kori';
         document.getElementById('sheetName').value = savedProfile;
 
+        updateDayTypeVisibility(savedProfile);
         resetDateTime();
         loadStats();
 
@@ -484,6 +485,15 @@
           } else {
             onTimeOrAmountInput();
           }
+        }
+      }
+
+      function updateDayTypeVisibility(profile) {
+        var container = document.getElementById('dayTypeContainer');
+        if (profile === 'Kori') {
+          container.style.display = 'flex';
+        } else {
+          container.style.display = 'none';
         }
       }
 
@@ -617,9 +627,9 @@
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
 
-        var sheetKey = document.getElementById('sheetName').value;
         var dateVal = document.getElementById('doseDate').value;
         var currentTime = document.getElementById('time').value.trim();
+        var wakeVal = document.getElementById('wakeTime').value.trim();
         var amtInput = document.getElementById('amount');
 
         var validDoses = [];
@@ -634,7 +644,7 @@
 
         var cap = getDoseCap(dateVal);
 
-        // 1. DÓZIS: Mindig fixen a megengedett maximum, ébredési időtől függetlenül!
+        // 1. DÓZIS: Fixen a napi maximum, ébredési időtől függetlenül
         if (validDoses.length === 0) {
           lastRawRecommendation = cap;
           amtInput.value = cap.toFixed(2);
@@ -646,51 +656,39 @@
         var nextDoseNum = validDoses.length + 1;
         if (nextDoseNum > 8) return;
 
+        // Célráta szigorúan: Bázisráta - 0.02
         var baselineRate = getBenchmarkRateForDose(data, nextDoseNum);
         var targetRate = Math.max(0.1, baselineRate - 0.02);
 
         var curM = parseTimeToMinutes(currentTime);
-        if (curM === null) return;
+        var wakeM = parseTimeToMinutes(wakeVal);
+        if (curM === null || wakeM === null) return;
 
-        var last = validDoses[validDoses.length - 1];
-        var lastM = parseTimeToMinutes(last.time);
-        if (lastM === null) return;
+        var diffM = curM - wakeM;
+        if (diffM <= 0) diffM += 1440;
+        var awakeHours = diffM / 60;
 
-        var elapsedMinFromLast = curM - lastM;
-        if (elapsedMinFromLast < 0) {
-          if (Math.abs(elapsedMinFromLast) <= 3) elapsedMinFromLast = 0;
-          else elapsedMinFromLast += 1440;
-        }
-        var elapsedHoursFromLast = elapsedMinFromLast / 60;
-
-        // 2..8. DÓZIS: Csak az 1. adag után indul a számlálás (1. adagból nem visz át adósságot!)
-        var storedDiffKey = 'taper_diff_' + sheetKey + '_' + dateVal + '_' + validDoses.length;
-        var savedDiffVal = localStorage.getItem(storedDiffKey);
-        var initialDelta = 0;
-
-        // Ha az előző dózis az 1. dózis volt, az induló egyenleg fixen 0!
-        if (validDoses.length === 1) {
-          initialDelta = 0;
-        } else if (savedDiffVal !== null) {
-          var sVal = parseFloat(savedDiffVal);
-          if (!isNaN(sVal)) {
-            initialDelta = sVal;
-          }
+        // Az 1. adag fixen a cap, nem vesz részt az időarányos deficit/többletben
+        var firstDoseAmt = getParsedAmount(validDoses[0].amount);
+        var subsequentTotal = 0;
+        for (var i = 1; i < validDoses.length; i++) {
+          subsequentTotal += getParsedAmount(validDoses[i].amount);
         }
 
-        var naturalAccrual = targetRate * elapsedHoursFromLast;
-        var netNeeded = initialDelta + naturalAccrual;
+        // Tiszta képlet: exactly at targetRate
+        var maxTotalAllowedAtNow = targetRate * awakeHours;
+        var exactNeeded = maxTotalAllowedAtNow - (firstDoseAmt + subsequentTotal);
 
-        if (netNeeded > cap) {
-          netNeeded = cap;
+        var finalDose = exactNeeded;
+        if (finalDose > cap) {
+          finalDose = cap;
         }
 
-        lastRawRecommendation = netNeeded;
-        var rounded = Math.round(netNeeded * 100) / 100;
-        if (Math.abs(rounded) < 0.005) rounded = 0;
+        lastRawRecommendation = finalDose;
+        var formattedDose = finalDose.toFixed(2);
+        amtInput.value = formattedDose;
 
-        amtInput.value = rounded.toFixed(2);
-        if (rounded < 0) {
+        if (finalDose < 0) {
           amtInput.style.color = '#ef5350';
         } else {
           amtInput.style.color = '#ffffff';
@@ -728,42 +726,36 @@
           document.getElementById('prevDiff').innerText = '-';
         }
 
-        var currentRecordedCount = 0;
-        if (currentStatsData.allDoses) {
-          for (var d = 0; d < currentStatsData.allDoses.length; d++) {
-            if (currentStatsData.allDoses[d].hasData) currentRecordedCount++;
-          }
-        }
-        var nextDoseNum = currentRecordedCount + 1;
-
-        // 1. DÓZISNÁL NINCS RATE SZÁMÍTÁS ÉS KIÍRÁS!
-        if (nextDoseNum === 1) {
-          rateDisplayEl.innerHTML = `<span style="color: #888;">-</span>`;
-          return;
-        }
-
-        // 2..8. DÓZIS: Inter-dose szakaszi ráta (Mostani adag / Utolsó óta eltelt idő)
-        var curM = parseTimeToMinutes(document.getElementById('time').value.trim());
-        var lastM = (last && last.time) ? parseTimeToMinutes(last.time) : null;
+        var awakeHours = getAwakeHoursToNow();
         var resultingRate = null;
 
-        if (curM !== null && lastM !== null) {
-          var diffMin = curM - lastM;
-          if (diffMin <= 0) diffMin += 1440;
-          var intHours = diffMin / 60;
-          if (intHours > 0) {
-            resultingRate = parseFloat((amountVal / intHours).toFixed(2));
-          }
+        if (awakeHours && awakeHours > 0) {
+          resultingRate = parseFloat((newTotal / awakeHours).toFixed(2));
         }
 
         if (resultingRate !== null && !isNaN(resultingRate)) {
+          var currentRecordedCount = 0;
+          if (currentStatsData.allDoses) {
+            for (var d = 0; d < currentStatsData.allDoses.length; d++) {
+              if (currentStatsData.allDoses[d].hasData) currentRecordedCount++;
+            }
+          }
+          var nextDoseNum = currentRecordedCount + 1;
+
+          if (nextDoseNum === 1) {
+            rateDisplayEl.innerHTML = `<span style="color: #888;">-</span>`;
+            return;
+          }
+
           var baselineRate = getBenchmarkRateForDose(currentStatsData, nextDoseNum);
 
           if (baselineRate !== null && !isNaN(baselineRate) && baselineRate > 0) {
             var baseFormatted = baselineRate.toFixed(2);
             var currentFormatted = resultingRate.toFixed(2);
 
-            if (resultingRate <= baselineRate && !isNeg) {
+            // ZÖLD ha <= baselineRate - 0.02 (a célráta alatt vagy egyenlő vele)
+            var targetLimit = Math.round((baselineRate - 0.02) * 100) / 100;
+            if (resultingRate <= targetLimit && !isNeg) {
               rateDisplayEl.innerHTML = `<span style="color: #81c784;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #81c784;">${baseFormatted} g/h</span>`;
             } else {
               rateDisplayEl.innerHTML = `<span style="color: #ef5350;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #888;">${baseFormatted} g/h</span>`;
@@ -815,20 +807,6 @@
         var time = document.getElementById('time').value.trim();
         var wakeTime = document.getElementById('wakeTime').value.trim();
 
-        var validCount = 0;
-        if (currentStatsData && currentStatsData.allDoses) {
-          validCount = currentStatsData.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length;
-        }
-        var currentDoseIndex = validCount + 1;
-
-        // 1. DÓZIS UTÁN AZ INDULÓ EGYENLEG MINDIG 0 (Nem visz át adósságot)!
-        var initialDelta = 0;
-        if (currentDoseIndex > 1 && lastRawRecommendation !== null) {
-          initialDelta = lastRawRecommendation - amountVal;
-        }
-
-        localStorage.setItem('taper_diff_' + sheetName + '_' + dateStr + '_' + currentDoseIndex, initialDelta);
-
         isSaving = true;
         isUserModified = false;
         isManualTimeSet = false;
@@ -861,20 +839,16 @@
           var curTot = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.').trim()) || 0;
           currentStatsData.dailyTotal = (curTot + amountVal).toFixed(2) + ' g';
 
-          // 1. adagnál a ráta '-', csak a 2. adagtól számoljuk a táblázatbeli rátát
+          var curAwakeHours = getAwakeHoursToNow();
           var calculatedDoseRate = '-';
-          if (valid.length > 1) {
-            var curAwakeHours = getAwakeHoursToNow();
-            if (curAwakeHours && curAwakeHours > 0) {
-              calculatedDoseRate = (parseFloat(currentStatsData.dailyTotal.replace(' g', '')) / curAwakeHours).toFixed(2);
-            }
+          if (curAwakeHours && curAwakeHours > 0) {
+            calculatedDoseRate = (parseFloat(currentStatsData.dailyTotal.replace(' g', '')) / curAwakeHours).toFixed(2);
           }
 
           currentStatsData.lastDose = {
             doseNumber: valid.length,
             time: time,
             amount: amountVal.toFixed(2),
-            doseDiff: initialDelta,
             awakeTime: '-',
             diff: '-',
             rate: calculatedDoseRate
@@ -882,13 +856,7 @@
           updateUpperCardsOnly(currentStatsData);
         }
 
-        lastRawRecommendation = initialDelta;
-        var rVal = Math.round(initialDelta * 100) / 100;
-        if (Math.abs(rVal) < 0.005) rVal = 0;
-
-        amountInput.value = rVal.toFixed(2);
-        amountInput.style.color = rVal < 0 ? '#ef5350' : '#ffffff';
-        onTimeOrAmountInput();
+        applyDoseRecommendation(currentStatsData);
 
         callApi({
           action: 'saveDose',
@@ -901,9 +869,6 @@
         }, function(res) {
           isSaving = false;
           if (res && res.success && res.stats) {
-            if (currentStatsData && currentStatsData.lastDose) {
-              res.stats.lastDose.doseDiff = initialDelta;
-            }
             saveToLocalCache(sheetName, dateStr, res.stats);
             renderAllStats(res.stats);
           }
@@ -947,8 +912,6 @@
 
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
-
-        localStorage.removeItem('taper_diff_' + sheetName + '_' + dateStr + '_' + doseNum);
 
         if (currentStatsData && currentStatsData.allDoses) {
           var idx = doseNum - 1;
@@ -1149,7 +1112,7 @@
 
       function saveToLocalCache(sheetName, dateStr, data) {
         try {
-          localStorage.setItem('taper_fast_cache_v20_' + sheetName + '_' + dateStr, JSON.stringify(data));
+          localStorage.setItem('taper_fast_cache_v21_' + sheetName + '_' + dateStr, JSON.stringify(data));
         } catch(e) {}
       }
 
@@ -1158,7 +1121,7 @@
         var dateStr = document.getElementById('doseDate').value;
         document.getElementById('dateSubtitle').innerText = dateStr;
 
-        var cacheKey = 'taper_fast_cache_v20_' + sheetName + '_' + dateStr;
+        var cacheKey = 'taper_fast_cache_v21_' + sheetName + '_' + dateStr;
         var hasCachedData = false;
 
         try {
@@ -1227,11 +1190,11 @@
           var lastRateVal = getParsedAmount(last.rate);
           var lastRateColor = '#ffffff';
 
-          // 1. adagnál a rate nem számít, kötőjelet mutat
           var rateDisplayString = '-';
           if (parseInt(last.doseNumber, 10) > 1 && lastRateVal > 0) {
             rateDisplayString = cleanDisplay(last.rate) + ' g/h';
-            if (benchmarkRate > 0 && lastRateVal > benchmarkRate) {
+            var targetLimit = Math.round((benchmarkRate - 0.02) * 100) / 100;
+            if (lastRateVal > targetLimit) {
               lastRateColor = '#ef5350';
             }
           }
@@ -1251,10 +1214,10 @@
         var validDoseCount = (data.allDoses ? data.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length : 0);
         var valuesRateDisplayString = '-';
 
-        // Values-ban is csak a 2. adagtól jelenik meg a ráta!
         if (validDoseCount > 1 && valuesRateVal > 0) {
           valuesRateDisplayString = cleanDisplay(data.avgRate) + ' g/h';
-          if (benchmarkRate > 0 && valuesRateVal > benchmarkRate) {
+          var targetLimitVal = Math.round((benchmarkRate - 0.02) * 100) / 100;
+          if (valuesRateVal > targetLimitVal) {
             valuesRateColor = '#ef5350';
           }
         }
