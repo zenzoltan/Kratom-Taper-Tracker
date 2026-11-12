@@ -644,7 +644,6 @@
 
         var cap = getDoseCap(dateVal);
 
-        // 1. DÓZIS: Fixen a napi maximum, ébredési időtől függetlenül, nulla számítás!
         if (validDoses.length === 0) {
           lastRawRecommendation = cap;
           amtInput.value = cap.toFixed(2);
@@ -691,8 +690,8 @@
 
         // 10 PERCES MESTERSÉGES VISSZAFOLYTÁS: SOHA NEM MUTATHAT OLYAT, AMI PIROSRA VÁLTANA
         if (validDoses.length === 1 && elapsedMinFromLast <= 10) {
-          netNeeded = 0.0;
-        } else if (netNeeded > 0 && elapsedHoursFromLast > 0) {
+          netNeeded = initialDelta > 0 ? initialDelta : 0.0; // Az adósságot itt sem veszíti el
+        } else if (netNeeded > 0 && elapsedHoursFromLast > 0 && initialDelta <= 0) { // Csak a normál növekményt vágja, a hozott adósságot nem
           var testRate = Math.round((netNeeded / elapsedHoursFromLast) * 100) / 100;
           if (testRate > targetLimit) {
             netNeeded = targetLimit * elapsedHoursFromLast;
@@ -703,11 +702,13 @@
           }
         }
 
+        var uncappedNeeded = netNeeded; // Megjegyezzük a maximálás előtti valós értéket (pl. 4.66)
+
         if (netNeeded > cap) {
           netNeeded = cap;
         }
 
-        lastRawRecommendation = netNeeded;
+        lastRawRecommendation = uncappedNeeded; // A vágatlan értéket adjuk át az autoSubmit-nak, így megmarad a többlet
         var rounded = Math.round(netNeeded * 100) / 100;
         if (Math.abs(rounded) < 0.005) rounded = 0;
 
@@ -758,13 +759,11 @@
         }
         var nextDoseNum = currentRecordedCount + 1;
 
-        // 1. DÓZISNÁL NINCS RATE SZÁMÍTÁS ÉS KIÍRÁS!
         if (nextDoseNum === 1) {
           rateDisplayEl.innerHTML = `<span style="color: #888;">-</span>`;
           return;
         }
 
-        // 2..8. DÓZIS: Inter-dose szakaszi ráta = Beírt adag / Előző adag óta eltelt óra!
         var curM = parseTimeToMinutes(document.getElementById('time').value.trim());
         var lastM = (last && last.time) ? parseTimeToMinutes(last.time) : null;
         var resultingRate = null;
@@ -844,7 +843,6 @@
         }
         var currentDoseIndex = validCount + 1;
 
-        // 1. DÓZIS UTÁN AZ INDULÓ EGYENLEG MINDIG 0 (Nem von le semmit és nem visz át adósságot)!
         var initialDelta = 0;
         if (currentDoseIndex > 1 && lastRawRecommendation !== null) {
           initialDelta = lastRawRecommendation - amountVal;
