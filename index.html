@@ -672,7 +672,6 @@
         if (nextDoseNum > 8) return;
 
         var recommendationRate = getRecommendationRate(dateVal); 
-        var targetLimit = recommendationRate; 
 
         var curM = parseTimeToMinutes(currentTime);
         if (curM === null) return;
@@ -741,6 +740,7 @@
         var previewBox = document.getElementById('livePreviewBox');
         var rateDisplayEl = document.getElementById('prevRateDisplay');
         var dateVal = document.getElementById('doseDate').value;
+        var sheetKey = document.getElementById('sheetName').value;
 
         var isNeg = String(raw).trim().startsWith('-');
 
@@ -778,6 +778,8 @@
           return;
         }
 
+        var recommendationRate = getRecommendationRate(dateVal); // pl. 1.21
+
         var curM = parseTimeToMinutes(document.getElementById('time').value.trim());
         var lastM = (last && last.time) ? parseTimeToMinutes(last.time) : null;
         var resultingRate = null;
@@ -787,17 +789,33 @@
           if (diffMin <= 0) diffMin += 1440;
           var intHours = diffMin / 60;
           if (intHours > 0) {
-            resultingRate = parseFloat((amountVal / intHours).toFixed(2));
+            // Adósság lekérése ehhez a szakaszhoz
+            var initialDelta = 0;
+            var storedDiffKey = 'taper_diff_v2_' + sheetKey + '_' + dateVal + '_' + nextDoseNum;
+            var savedDiffVal = localStorage.getItem(storedDiffKey);
+            if (savedDiffVal !== null) {
+              var sVal = parseFloat(savedDiffVal);
+              if (!isNaN(sVal)) initialDelta = sVal;
+            }
+
+            // Tökéletes visszafejtés: ha a mezőben lévő érték megegyezik a gép által ajánlottal, a ráta fixen a célráta.
+            var exactRecommended = Math.round((initialDelta + (recommendationRate * intHours)) * 100) / 100;
+            
+            if (Math.abs(amountVal - exactRecommended) < 0.005) {
+                resultingRate = recommendationRate;
+            } else {
+                // Ha manuálisan eltérsz tőle, akkor kiszámolja az adósság nélküli valós tempót
+                resultingRate = (amountVal - initialDelta) / intHours;
+            }
           }
         }
 
         if (resultingRate !== null && !isNaN(resultingRate)) {
-          var recommendationRate = getRecommendationRate(dateVal);
-          var targetLimit = recommendationRate;
-          var baseFormatted = targetLimit.toFixed(2);
+          var baseLimit = 1.22; // Hardkódolt fix 1.22 bázis, ahogy kérted a jobb oldalra
+          var baseFormatted = baseLimit.toFixed(2);
           var currentFormatted = resultingRate.toFixed(2);
 
-          if (resultingRate <= targetLimit && !isNeg) {
+          if (resultingRate <= recommendationRate && !isNeg) {
             rateDisplayEl.innerHTML = `<span style="color: #81c784;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #81c784;">${baseFormatted} g/h</span>`;
           } else {
             rateDisplayEl.innerHTML = `<span style="color: #ef5350;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #888;">${baseFormatted} g/h</span>`;
