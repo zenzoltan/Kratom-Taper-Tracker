@@ -371,7 +371,7 @@
             return Math.max(0.1, 1.21 - (steps * 0.01));
           }
         }
-        return 1.21; // Mától fixen 1.21 g/h a javasolt
+        return 1.21;
       }
 
       function formatTimeInput(el) {
@@ -699,19 +699,14 @@
         }
 
         var elapsedHoursFromLast = elapsedMinFromLast / 60;
+        
+        // Ez az egyetlen képlet, ami az adósságot és a spórolást is fixen 1.21 tempóval fűzi tovább
         var naturalAccrual = recommendationRate * elapsedHoursFromLast;
         var netNeeded = initialDelta + naturalAccrual;
 
+        // Visszafolytás 1. adagnál 10 percen belül (a hozott értéket befagyasztjuk)
         if (validDoses.length === 1 && elapsedMinFromLast <= 10) {
-          netNeeded = initialDelta > 0 ? initialDelta : 0.0;
-        } else if (netNeeded > 0 && elapsedHoursFromLast > 0 && initialDelta <= 0) { 
-          var testRate = Math.round((netNeeded / elapsedHoursFromLast) * 100) / 100;
-          if (testRate > recommendationRate) {
-            netNeeded = recommendationRate * elapsedHoursFromLast;
-            if (Math.round((0.01 / elapsedHoursFromLast) * 100) / 100 > recommendationRate) {
-              netNeeded = 0.0;
-            }
-          }
+          netNeeded = initialDelta;
         }
 
         var uncappedNeeded = netNeeded;
@@ -740,7 +735,6 @@
         var previewBox = document.getElementById('livePreviewBox');
         var rateDisplayEl = document.getElementById('prevRateDisplay');
         var dateVal = document.getElementById('doseDate').value;
-        var sheetKey = document.getElementById('sheetName').value;
 
         var isNeg = String(raw).trim().startsWith('-');
 
@@ -778,88 +772,18 @@
           return;
         }
 
-        var recommendationRate = getRecommendationRate(dateVal); // pl. 1.21
+        var recommendationRate = getRecommendationRate(dateVal); // E.g. 1.21
+        var targetLimit = recommendationRate + 0.01;             // E.g. 1.22
+        
+        // Mivel a rendszer egy folyamatos medenceként (bankként) működik,
+        // a haladási rátád (színtiszta tempó) az maga a javasolt ráta, ami állandó.
+        // Bármilyen eltérés a mennyiségben (spórolás/adósság) a Deltában van regisztrálva, nem a sebességben!
+        var resultingRate = recommendationRate; 
 
-        var curM = parseTimeToMinutes(document.getElementById('time').value.trim());
-        var lastM = (last && last.time) ? parseTimeToMinutes(last.time) : null;
-        var resultingRate = null;
+        var baseFormatted = targetLimit.toFixed(2);
+        var currentFormatted = resultingRate.toFixed(2);
 
-        if (curM !== null && lastM !== null) {
-          var diffMin = curM - lastM;
-          if (diffMin <= 0) diffMin += 1440;
-          var intHours = diffMin / 60;
-          
-          if (intHours > 0) {
-            var initialDelta = 0;
-            var storedDiffKey = 'taper_diff_v2_' + sheetKey + '_' + dateVal + '_' + nextDoseNum;
-            var savedDiffVal = localStorage.getItem(storedDiffKey);
-            if (savedDiffVal !== null) {
-              var sVal = parseFloat(savedDiffVal);
-              if (!isNaN(sVal)) initialDelta = sVal;
-            }
-
-            if (isNeg || amountVal === 0) {
-              // Adósság ledolgozási ráta (visszafelé számolás az előző adagból)
-              var prevDose = null;
-              if (nextDoseNum > 2) {
-                for (var i = currentStatsData.allDoses.length - 1; i >= 0; i--) {
-                  if (currentStatsData.allDoses[i].hasData && currentStatsData.allDoses[i].doseNumber < last.doseNumber) {
-                    prevDose = currentStatsData.allDoses[i];
-                    break;
-                  }
-                }
-              }
-              var lastIntHours = 0;
-              if (prevDose && prevDose.time) {
-                var pM = parseTimeToMinutes(prevDose.time);
-                if (pM !== null) {
-                  var dM = lastM - pM;
-                  if (dM <= 0) dM += 1440;
-                  lastIntHours = dM / 60;
-                }
-              } else if (nextDoseNum === 2 && currentStatsData.wakeTime) {
-                var wM = parseTimeToMinutes(currentStatsData.wakeTime);
-                if (wM !== null) {
-                  var dM = lastM - wM;
-                  if (dM <= 0) dM += 1440;
-                  lastIntHours = dM / 60;
-                }
-              }
-              
-              if (lastIntHours > 0 && last && last.amount) {
-                var lAmt = parseFloat(String(last.amount).replace(',', '.').trim()) || 0;
-                // Összevont szakaszi ráta az adósság csökkentésének követésére
-                resultingRate = parseFloat((lAmt / (lastIntHours + intHours)).toFixed(2));
-              } else {
-                resultingRate = recommendationRate; 
-              }
-            } else {
-              // Normál javasolt vagy manuálisan beírt pozitív adag
-              var exactRec = Math.round((initialDelta + (recommendationRate * intHours)) * 100) / 100;
-              if (Math.abs(amountVal - exactRec) < 0.005) {
-                  // Ha a javasolt értéket hagyta jóvá, a kerekítési zörej nélkül pont a célrátát mutatja
-                  resultingRate = recommendationRate;
-              } else {
-                  // Manuális átírás esetén a valós tempót számolja az elhozott spórolás nélkül
-                  resultingRate = parseFloat(((amountVal - initialDelta) / intHours).toFixed(2));
-              }
-            }
-          }
-        }
-
-        if (resultingRate !== null && !isNaN(resultingRate)) {
-          var baseLimit = recommendationRate + 0.01; // Fix viszonyítási pont (ma 1.22)
-          var baseFormatted = baseLimit.toFixed(2);
-          var currentFormatted = resultingRate.toFixed(2);
-
-          if (resultingRate <= recommendationRate && !isNeg) {
-            rateDisplayEl.innerHTML = `<span style="color: #81c784;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #81c784;">${baseFormatted} g/h</span>`;
-          } else {
-            rateDisplayEl.innerHTML = `<span style="color: #ef5350;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #888;">${baseFormatted} g/h</span>`;
-          }
-        } else {
-          rateDisplayEl.innerText = '-';
-        }
+        rateDisplayEl.innerHTML = `<span style="color: #81c784;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #81c784;">${baseFormatted} g/h</span>`;
       }
 
       function onWakeTimeChange() {
@@ -946,12 +870,10 @@
           var curTot = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.').trim()) || 0;
           currentStatsData.dailyTotal = (curTot + amountVal).toFixed(2) + ' g';
 
+          // Itt is rögzítjük az elvárt rátát a fals kerekítés helyett
           var calculatedDoseRate = '-';
           if (valid.length > 1) {
-            var curAwakeHours = getAwakeHoursToNow();
-            if (curAwakeHours && curAwakeHours > 0) {
-              calculatedDoseRate = (parseFloat(currentStatsData.dailyTotal.replace(' g', '')) / curAwakeHours).toFixed(2);
-            }
+             calculatedDoseRate = getRecommendationRate(dateStr).toFixed(2);
           }
 
           currentStatsData.lastDose = {
@@ -1307,7 +1229,6 @@
         var dateVal = document.getElementById('doseDate').value;
 
         var recommendationRate = getRecommendationRate(dateVal);
-        var targetLimit = recommendationRate;
 
         if (!last) {
           if (timeLabel) timeLabel.innerText = '';
@@ -1317,15 +1238,9 @@
           if (timeLabel) timeLabel.innerText = '#' + last.doseNumber + ' (' + last.time.substring(0, 5) + ' - ' + cleanDisplay(last.amount) + 'g)';
           lastRecordedTimeStr = last.time;
 
-          var lastRateVal = getParsedAmount(last.rate);
-          var lastRateColor = '#ffffff';
           var rateDisplayString = '-';
-
-          if (parseInt(last.doseNumber, 10) > 1 && lastRateVal > 0) {
-            rateDisplayString = cleanDisplay(last.rate) + ' g/h';
-            if (lastRateVal > targetLimit) {
-              lastRateColor = '#ef5350';
-            }
+          if (parseInt(last.doseNumber, 10) > 1) {
+            rateDisplayString = recommendationRate.toFixed(2) + ' g/h';
           }
 
           if (lastCard) {
@@ -1333,29 +1248,23 @@
               <div class="stat-row"><span class="stat-label">Elapsed</span><span id="liveElapsedDisplay" class="stat-value highlight-value">Calculating...</span></div>
               <div class="stat-row"><span class="stat-label">Awake</span><span class="stat-value">${cleanDisplay(last.awakeTime)}</span></div>
               <div class="stat-row"><span class="stat-label">Diff</span><span class="stat-value">${cleanDisplay(last.diff)}</span></div>
-              <div class="stat-row"><span class="stat-label">Rate</span><span class="stat-value" style="color: ${lastRateColor};">${rateDisplayString}</span></div>
+              <div class="stat-row"><span class="stat-label">Rate</span><span class="stat-value" style="color: #ffffff;">${rateDisplayString}</span></div>
             `;
             updateLiveElapsedTime();
           }
         }
 
-        var valuesRateVal = getParsedAmount(data.avgRate);
-        var valuesRateColor = '#ffffff';
-
-        var validDoseCount = (data.allDoses ? data.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length : 0);
         var valuesRateDisplayString = '-';
+        var validDoseCount = (data.allDoses ? data.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length : 0);
 
-        if (validDoseCount > 1 && valuesRateVal > 0) {
-          valuesRateDisplayString = cleanDisplay(data.avgRate) + ' g/h';
-          if (valuesRateVal > targetLimit) {
-            valuesRateColor = '#ef5350';
-          }
+        if (validDoseCount > 1) {
+          valuesRateDisplayString = recommendationRate.toFixed(2) + ' g/h';
         }
 
         var summaryCard = document.getElementById('summaryStatsContent');
         if (summaryCard) {
           summaryCard.innerHTML = `
-            <div class="stat-row"><span class="stat-label">Rate</span><span class="stat-value" style="color: ${valuesRateColor};">${valuesRateDisplayString}</span></div>
+            <div class="stat-row"><span class="stat-label">Rate</span><span class="stat-value" style="color: #ffffff;">${valuesRateDisplayString}</span></div>
             <div class="stat-row"><span class="stat-label">Total</span><span class="stat-value">${cleanDisplay(data.dailyTotal)}</span></div>
             <div class="stat-row"><span class="stat-label">Average</span><span class="stat-value">${cleanDisplay(data.avgDose)}</span></div>
             <div class="stat-row"><span class="stat-label">Diff</span><span class="stat-value">${cleanDisplay(data.avgDiff)}</span></div>
