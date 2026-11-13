@@ -782,12 +782,10 @@
 
         if (curM !== null && lastM !== null) {
           var diffMin = curM - lastM;
-          if (diffMin < 0) diffMin += 1440; // nullát is engedjük, ha most mentett
+          if (diffMin < 0) diffMin += 1440;
           var intHours = diffMin / 60;
           
           if (isNeg || amountVal === 0) {
-              // TÖKÉLETES SZINKRON: Ha adósságot mutat a mező (- érték), a preview
-              // folytatja a mentés pillanatában elkezdett hűtési ciklust
               if (window.liveRateParams) {
                   var p = window.liveRateParams;
                   var currentNet = p.initialDelta + (p.recRate * intHours);
@@ -797,7 +795,6 @@
                   }
               }
           } else {
-              // Ha manuálisan írsz be pozitív értéket
               if (intHours > 0) {
                   var initialDelta = 0;
                   var prevDoseNum = currentRecordedCount; 
@@ -1343,30 +1340,20 @@
               startingHighRate: calcRate 
           };
 
-          var lastRateColor = '#ffffff';
-          var rateDisplayString = '-';
-
-          if (parseInt(last.doseNumber, 10) > 1) {
-            rateDisplayString = calcRate.toFixed(2) + ' g/h';
-            if (calcRate > targetLimit) {
-              lastRateColor = '#ef5350';
-            }
-          }
-
           if (lastCard) {
             lastCard.innerHTML = `
               <div class="stat-row"><span class="stat-label">Elapsed</span><span id="liveElapsedDisplay" class="stat-value highlight-value">Calculating...</span></div>
               <div class="stat-row"><span class="stat-label">Awake</span><span class="stat-value">${cleanDisplay(last.awakeTime)}</span></div>
               <div class="stat-row"><span class="stat-label">Diff</span><span id="liveDiffDisplayVal" class="stat-value">${cleanDisplay(last.diff)}</span></div>
-              <div class="stat-row"><span class="stat-label">Rate</span><span class="stat-value" id="liveRateDisplayVal" style="color: ${lastRateColor};">${rateDisplayString}</span></div>
             `;
             updateLiveElapsedTime();
           }
         }
 
         var valuesRateDisplayString = '-';
-
+        var valuesRateColor = '#ffffff';
         var validDoseCount = (data.allDoses ? data.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length : 0);
+
         if (validDoseCount > 1) {
           valuesRateDisplayString = recommendationRate.toFixed(2) + ' g/h';
         }
@@ -1374,7 +1361,7 @@
         var summaryCard = document.getElementById('summaryStatsContent');
         if (summaryCard) {
           summaryCard.innerHTML = `
-            <div class="stat-row"><span class="stat-label">Rate</span><span class="stat-value" style="color: #ffffff;">${valuesRateDisplayString}</span></div>
+            <div class="stat-row"><span class="stat-label">Rate</span><span class="stat-value" style="color: ${valuesRateColor};">${valuesRateDisplayString}</span></div>
             <div class="stat-row"><span class="stat-label">Total</span><span class="stat-value">${cleanDisplay(data.dailyTotal)}</span></div>
             <div class="stat-row"><span class="stat-label">Average</span><span class="stat-value">${cleanDisplay(data.avgDose)}</span></div>
             <div class="stat-row"><span class="stat-label">Diff</span><span class="stat-value">${cleanDisplay(data.avgDiff)}</span></div>
@@ -1493,7 +1480,7 @@
           el.innerText = hours + ' h ' + String(mins).padStart(2, '0') + ' min';
         }
         
-        if (window.liveRateParams && document.getElementById('liveRateDisplayVal')) {
+        if (window.liveRateParams && document.getElementById('prevRateDisplay')) {
             var p = window.liveRateParams;
             var elapsedH = totalMinutes / 60;
             var currentNet = p.initialDelta + (p.recRate * elapsedH);
@@ -1506,8 +1493,10 @@
                 displayRate = totalEatenInSegment / totalElapsed; 
             }
             
-            var rateEl = document.getElementById('liveRateDisplayVal');
-            if (rateEl) {
+            var rateEl = document.getElementById('prevRateDisplay');
+            var amountEl = document.getElementById('amount');
+            // Csak akkor mutatja ezt a hűlő értéket, ha negatív adósság van a mezőben
+            if (rateEl && amountEl && amountEl.value.trim().startsWith('-')) {
                 var color = (displayRate > p.recRate + 0.005) ? '#ef5350' : '#81c784';
                 rateEl.innerHTML = `<span style="color: ${color};">${displayRate.toFixed(2)}</span> <span style="color: #666;">/</span> <span style="color: #888;">${p.baseRate.toFixed(2)} g/h</span>`;
             }
