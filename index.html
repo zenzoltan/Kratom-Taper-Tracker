@@ -347,7 +347,7 @@
       var lastRawRecommendation = null;
       
       window.liveRateParams = null; 
-      window.currentTypingRate = null; // A "lefényképezett" ráta mentés előtt
+      window.currentTypingRate = null;
 
       function getDoseCap(dateStr) {
         var base = new Date(2026, 10, 10);
@@ -364,7 +364,7 @@
       }
 
       function getRecommendationRate(dateStr) {
-        var baseDate = new Date(2026, 10, 13); // 2026. november 13.
+        var baseDate = new Date(2026, 10, 13);
         var parts = (dateStr || '').split('-');
         if (parts.length === 3) {
           var curDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
@@ -770,7 +770,7 @@
         }
         var nextDoseNum = currentRecordedCount + 1;
 
-        if (nextDoseNum === 1) {
+        if (nextDoseNum === 1 && !isNeg) {
           rateDisplayEl.innerHTML = `<span style="color: #888;">-</span>`;
           return;
         }
@@ -779,20 +779,33 @@
         var targetLimit = recommendationRate + 0.01;             
         var resultingRate = recommendationRate; 
 
-        // PREVIEW DELEGÁLÁSA: Ha a mentett (adósság) van a mezőben, adja át a frissítő motornak
-        if (isNeg || amountVal === 0) {
-            if (window.liveRateParams) {
-                updateLiveElapsedTime();
-            } else {
-                var bF = targetLimit.toFixed(2);
-                var cF = recommendationRate.toFixed(2);
-                rateDisplayEl.innerHTML = `<span style="color: #81c784;">${cF}</span> <span style="color: #666;">/</span> <span style="color: #888;">${bF} g/h</span>`;
-            }
-            return;
-        }
-
         var curM = parseTimeToMinutes(document.getElementById('time').value.trim());
         var lastM = (last && last.time) ? parseTimeToMinutes(last.time) : null;
+
+        // Ha negatív adósság van a mezőben, közvetlenül és késleltetés nélkül számoljuk ki a hűlő rátát
+        if (isNeg || amountVal === 0) {
+            if (window.liveRateParams) {
+                var p = window.liveRateParams;
+                var elapsedH = 0;
+                if (curM !== null && lastM !== null) {
+                    var dM = curM - lastM;
+                    if (dM < 0) dM += 1440;
+                    elapsedH = dM / 60;
+                }
+                var currentNet = p.initialDelta + (p.recRate * elapsedH);
+                if (currentNet < -0.005 && p.lastIntHours > 0) {
+                    // Pontosan a mentés előtti értékről indul (elapsedH = 0 esetén), és lineárisan ér 1.21-re, amikor currentNet = 0
+                    resultingRate = p.recRate + (-currentNet / p.lastIntHours);
+                } else {
+                    resultingRate = p.recRate;
+                }
+            }
+            var bF = targetLimit.toFixed(2);
+            var cF = resultingRate.toFixed(2);
+            var col = (resultingRate > recommendationRate + 0.005) ? '#ef5350' : '#81c784';
+            rateDisplayEl.innerHTML = `<span style="color: ${col};">${cF}</span> <span style="color: #666;">/</span> <span style="color: #888;">${bF} g/h</span>`;
+            return;
+        }
 
         if (curM !== null && lastM !== null) {
           var diffMin = curM - lastM;
@@ -821,7 +834,6 @@
           }
         }
 
-        // FOTÓZZUK LE AZ ÉLŐ RÁTÁT, HOGY A MENTÉSNÉL NE UGORHASSON EL!
         window.currentTypingRate = resultingRate; 
 
         var baseFormatted = targetLimit.toFixed(2);
@@ -884,7 +896,6 @@
           initialDelta = lastRawRecommendation - amountVal;
         }
 
-        // 1. ELMENTJÜK A PARAMÉTEREKET A MENTÉS PILLANATÁBAN, HOGY NE UGORJON
         var recommendationRate = getRecommendationRate(dateStr);
         var targetLimit = recommendationRate + 0.01;
         var lastIntHours = 0;
@@ -925,8 +936,16 @@
         isSaving = true;
         isUserModified = false;
         isManualTimeSet = false;
-        document.getElementById('livePreviewBox').style.display = 'none';
 
+        // 1. ELŐSZÖR BEÍRJUK A MÍNUSZ ÉRTÉKET AZ INPUT MEZŐBE
+        lastRawRecommendation = initialDelta;
+        var rVal = Math.round(initialDelta * 100) / 100;
+        if (Math.abs(rVal) < 0.005) rVal = 0;
+
+        amountInput.value = rVal.toFixed(2);
+        amountInput.style.color = rVal < 0 ? '#ef5350' : '#ffffff';
+
+        // 2. OPTIMISTÁN FRISSÍTJÜK A MEMÓRIÁBAN LÉVŐ ALLDOSES TÖMBÖT IS, HOGY A MÁSODPERCES ÓRA NE ÍRJA FELÜL!
         if (currentStatsData && currentStatsData.allDoses) {
           var valid = [];
           for (var i = 0; i < currentStatsData.allDoses.length; i++) {
@@ -938,15 +957,28 @@
           valid.push({ time: time, amount: amountVal });
           valid.sort(function(a, b) { return a.time.localeCompare(b.time); });
 
+          currentStatsData.allDoses = [];
           for (var k = 1; k <= 8; k++) {
             var tInp = document.getElementById('t_time_' + k);
             var aInp = document.getElementById('t_amount_' + k);
             if (k <= valid.length) {
               if (tInp) tInp.value = valid[k - 1].time;
               if (aInp) aInp.value = valid[k - 1].amount.toFixed(2);
+              currentStatsData.allDoses.push({
+                doseNumber: k,
+                time: valid[k - 1].time,
+                amount: valid[k - 1].amount.toFixed(2),
+                hasData: true
+              });
             } else {
               if (tInp) tInp.value = '';
               if (aInp) aInp.value = '';
+              currentStatsData.allDoses.push({
+                doseNumber: k,
+                time: '',
+                amount: '',
+                hasData: false
+              });
             }
           }
 
@@ -971,12 +1003,7 @@
           updateUpperCardsOnly(currentStatsData);
         }
 
-        lastRawRecommendation = initialDelta;
-        var rVal = Math.round(initialDelta * 100) / 100;
-        if (Math.abs(rVal) < 0.005) rVal = 0;
-
-        amountInput.value = rVal.toFixed(2);
-        amountInput.style.color = rVal < 0 ? '#ef5350' : '#ffffff';
+        // 3. AZONNAL FRISSÍTJÜK A PREVIEW SÁVOT A HELYES RÁTÁVAL
         onTimeOrAmountInput();
 
         callApi({
@@ -1038,6 +1065,7 @@
         var dateStr = document.getElementById('doseDate').value;
 
         localStorage.removeItem('taper_diff_v6_' + sheetName + '_' + dateStr + '_' + doseNum);
+        window.liveRateParams = null;
 
         if (currentStatsData && currentStatsData.allDoses) {
           var idx = doseNum - 1;
@@ -1101,6 +1129,8 @@
 
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
+
+        window.liveRateParams = null;
 
         if (currentStatsData && currentStatsData.allDoses) {
           var idx = doseNum - 1;
@@ -1326,7 +1356,6 @@
           var validDoses = data.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0);
           var savedDoseNum = validDoses.length;
           
-          // 2. HA A SZERVER VÁLASZOL, NE ÍRJA FELÜL A BEFAGYASZTOTT RÁTÁT!
           if (!window.liveRateParams || window.liveRateParams.doseNumber !== savedDoseNum) {
               var lastIntHours = 0;
               if (validDoses.length > 1) {
@@ -1532,9 +1561,7 @@
             var displayRate = p.recRate; 
             
             if (currentNet < -0.005 && p.lastIntHours > 0) {
-                var totalElapsed = p.lastIntHours + elapsedH;
-                var totalEatenInSegment = p.startingHighRate * p.lastIntHours; 
-                displayRate = totalEatenInSegment / totalElapsed; 
+                displayRate = p.recRate + (-currentNet / p.lastIntHours); 
             }
             
             var rateEl = document.getElementById('prevRateDisplay');
