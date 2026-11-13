@@ -360,18 +360,18 @@
         return 3.67;
       }
 
-      function getTargetRate(dateStr) {
-        var baseDate = new Date(2026, 10, 10); // 2026. november 10.
+      function getRecommendationRate(dateStr) {
+        var baseDate = new Date(2026, 10, 13); // 2026. november 13.
         var parts = (dateStr || '').split('-');
         if (parts.length === 3) {
           var curDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
           var diffDays = Math.floor((curDate.getTime() - baseDate.getTime()) / (1000 * 60 * 60 * 24));
           if (diffDays > 0) {
             var steps = Math.floor(diffDays / 3); // 3 naponta csökken
-            return Math.max(0.1, 1.22 - (steps * 0.01));
+            return Math.max(0.1, 1.21 - (steps * 0.01));
           }
         }
-        return 1.22;
+        return 1.21; // Mától fixen 1.21 g/h a javasolt
       }
 
       function formatTimeInput(el) {
@@ -660,7 +660,6 @@
 
         var cap = getDoseCap(dateVal);
 
-        // 1. DÓZIS: Fixen a napi maximum
         if (validDoses.length === 0) {
           lastRawRecommendation = cap;
           amtInput.value = cap.toFixed(2);
@@ -672,10 +671,8 @@
         var nextDoseNum = validDoses.length + 1;
         if (nextDoseNum > 8) return;
 
-        // Dinamikus ráta számítás
-        var currentTargetRate = getTargetRate(dateVal);
-        var targetLimit = currentTargetRate; // Ezt mutatjuk majd mint limit
-        var recommendationRate = Math.max(0.1, currentTargetRate - 0.01); // Ezzel számoljuk a javaslatot
+        var recommendationRate = getRecommendationRate(dateVal); // Mától 1.21
+        var targetLimit = recommendationRate + 0.01; // Limit 1.22
 
         var curM = parseTimeToMinutes(currentTime);
         if (curM === null) return;
@@ -692,7 +689,7 @@
 
         var initialDelta = 0;
         if (validDoses.length > 1) {
-          var storedDiffKey = 'taper_diff_' + sheetKey + '_' + dateVal + '_' + validDoses.length;
+          var storedDiffKey = 'taper_diff_v2_' + sheetKey + '_' + dateVal + '_' + validDoses.length;
           var savedDiffVal = localStorage.getItem(storedDiffKey);
           if (savedDiffVal !== null) {
             var sVal = parseFloat(savedDiffVal);
@@ -703,30 +700,28 @@
         }
 
         var elapsedHoursFromLast = elapsedMinFromLast / 60;
-        var naturalAccrual = recommendationRate * elapsedHoursFromLast; // Növekedés a csökkentett rátával
+        var naturalAccrual = recommendationRate * elapsedHoursFromLast;
         var netNeeded = initialDelta + naturalAccrual;
 
-        // 10 PERCES MESTERSÉGES VISSZAFOLYTÁS
         if (validDoses.length === 1 && elapsedMinFromLast <= 10) {
           netNeeded = initialDelta > 0 ? initialDelta : 0.0;
         } else if (netNeeded > 0 && elapsedHoursFromLast > 0 && initialDelta <= 0) { 
           var testRate = Math.round((netNeeded / elapsedHoursFromLast) * 100) / 100;
           if (testRate > recommendationRate) {
             netNeeded = recommendationRate * elapsedHoursFromLast;
-            // Ha a kerekítés miatt még 0.01-nél is túllépné a célt, maradjon 0.00-n
             if (Math.round((0.01 / elapsedHoursFromLast) * 100) / 100 > recommendationRate) {
               netNeeded = 0.0;
             }
           }
         }
 
-        var uncappedNeeded = netNeeded; // Megjegyezzük a maximálás előtti valós értéket
+        var uncappedNeeded = netNeeded;
 
         if (netNeeded > cap) {
           netNeeded = cap;
         }
 
-        lastRawRecommendation = uncappedNeeded; // A vágatlan értéket adjuk át
+        lastRawRecommendation = uncappedNeeded;
         var rounded = Math.round(netNeeded * 100) / 100;
         if (Math.abs(rounded) < 0.005) rounded = 0;
 
@@ -778,13 +773,11 @@
         }
         var nextDoseNum = currentRecordedCount + 1;
 
-        // 1. DÓZISNÁL NINCS RATE SZÁMÍTÁS ÉS KIÍRÁS!
         if (nextDoseNum === 1) {
           rateDisplayEl.innerHTML = `<span style="color: #888;">-</span>`;
           return;
         }
 
-        // 2..8. DÓZIS
         var curM = parseTimeToMinutes(document.getElementById('time').value.trim());
         var lastM = (last && last.time) ? parseTimeToMinutes(last.time) : null;
         var resultingRate = null;
@@ -799,7 +792,8 @@
         }
 
         if (resultingRate !== null && !isNaN(resultingRate)) {
-          var targetLimit = getTargetRate(dateVal);
+          var recommendationRate = getRecommendationRate(dateVal);
+          var targetLimit = recommendationRate + 0.01;
           var baseFormatted = targetLimit.toFixed(2);
           var currentFormatted = resultingRate.toFixed(2);
 
@@ -863,7 +857,7 @@
           initialDelta = lastRawRecommendation - amountVal;
         }
 
-        localStorage.setItem('taper_diff_' + sheetName + '_' + dateStr + '_' + currentDoseIndex, initialDelta);
+        localStorage.setItem('taper_diff_v2_' + sheetName + '_' + dateStr + '_' + currentDoseIndex, initialDelta);
 
         isSaving = true;
         isUserModified = false;
@@ -983,7 +977,7 @@
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
 
-        localStorage.removeItem('taper_diff_' + sheetName + '_' + dateStr + '_' + doseNum);
+        localStorage.removeItem('taper_diff_v2_' + sheetName + '_' + dateStr + '_' + doseNum);
 
         if (currentStatsData && currentStatsData.allDoses) {
           var idx = doseNum - 1;
@@ -1257,7 +1251,8 @@
         var timeLabel = document.getElementById('lastDoseTimeLabel');
         var dateVal = document.getElementById('doseDate').value;
 
-        var targetLimit = getTargetRate(dateVal);
+        var recommendationRate = getRecommendationRate(dateVal);
+        var targetLimit = recommendationRate + 0.01;
 
         if (!last) {
           if (timeLabel) timeLabel.innerText = '';
