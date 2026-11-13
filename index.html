@@ -612,18 +612,6 @@
         return diff / 60;
       }
 
-      function getBenchmarkRateForDose(data, doseNum) {
-        if (data && data.yesterdayRates) {
-          if (data.yesterdayRates[doseNum] !== undefined) {
-            return parseFloat(data.yesterdayRates[doseNum]);
-          }
-          if (data.yesterdayRates[String(doseNum)] !== undefined) {
-            return parseFloat(data.yesterdayRates[String(doseNum)]);
-          }
-        }
-        return 1.25;
-      }
-
       function applyDoseRecommendation(data) {
         if (!data || !data.found || isUserModified) return;
 
@@ -644,6 +632,7 @@
 
         var cap = getDoseCap(dateVal);
 
+        // 1. DÓZIS: Fixen a napi maximum
         if (validDoses.length === 0) {
           lastRawRecommendation = cap;
           amtInput.value = cap.toFixed(2);
@@ -655,9 +644,9 @@
         var nextDoseNum = validDoses.length + 1;
         if (nextDoseNum > 8) return;
 
-        var baselineRate = getBenchmarkRateForDose(data, nextDoseNum);
-        var targetRate = Math.max(0.1, baselineRate - 0.02);
-        var targetLimit = Math.round((baselineRate - 0.02) * 100) / 100;
+        // Fix növekedési ütem 1.22 g/h
+        var targetRate = 1.22;
+        var targetLimit = 1.22;
 
         var curM = parseTimeToMinutes(currentTime);
         if (curM === null) return;
@@ -685,7 +674,7 @@
         }
 
         var elapsedHoursFromLast = elapsedMinFromLast / 60;
-        var naturalAccrual = targetRate * elapsedHoursFromLast;
+        var naturalAccrual = targetRate * elapsedHoursFromLast; // Növekedés 0-ról indulva
         var netNeeded = initialDelta + naturalAccrual;
 
         // 10 PERCES MESTERSÉGES VISSZAFOLYTÁS: SOHA NEM MUTATHAT OLYAT, AMI PIROSRA VÁLTANA
@@ -702,13 +691,13 @@
           }
         }
 
-        var uncappedNeeded = netNeeded; // Megjegyezzük a maximálás előtti valós értéket (pl. 4.66)
+        var uncappedNeeded = netNeeded; // Megjegyezzük a maximálás előtti valós értéket
 
         if (netNeeded > cap) {
           netNeeded = cap;
         }
 
-        lastRawRecommendation = uncappedNeeded; // A vágatlan értéket adjuk át az autoSubmit-nak, így megmarad a többlet
+        lastRawRecommendation = uncappedNeeded; // A vágatlan értéket adjuk át az autoSubmit-nak
         var rounded = Math.round(netNeeded * 100) / 100;
         if (Math.abs(rounded) < 0.005) rounded = 0;
 
@@ -759,11 +748,13 @@
         }
         var nextDoseNum = currentRecordedCount + 1;
 
+        // 1. DÓZISNÁL NINCS RATE SZÁMÍTÁS ÉS KIÍRÁS!
         if (nextDoseNum === 1) {
           rateDisplayEl.innerHTML = `<span style="color: #888;">-</span>`;
           return;
         }
 
+        // 2..8. DÓZIS
         var curM = parseTimeToMinutes(document.getElementById('time').value.trim());
         var lastM = (last && last.time) ? parseTimeToMinutes(last.time) : null;
         var resultingRate = null;
@@ -778,20 +769,14 @@
         }
 
         if (resultingRate !== null && !isNaN(resultingRate)) {
-          var baselineRate = getBenchmarkRateForDose(currentStatsData, nextDoseNum);
+          var baseFormatted = "1.22";
+          var currentFormatted = resultingRate.toFixed(2);
+          var targetLimit = 1.22;
 
-          if (baselineRate !== null && !isNaN(baselineRate) && baselineRate > 0) {
-            var baseFormatted = baselineRate.toFixed(2);
-            var currentFormatted = resultingRate.toFixed(2);
-
-            var targetLimit = Math.round((baselineRate - 0.02) * 100) / 100;
-            if (resultingRate <= targetLimit && !isNeg) {
-              rateDisplayEl.innerHTML = `<span style="color: #81c784;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #81c784;">${baseFormatted} g/h</span>`;
-            } else {
-              rateDisplayEl.innerHTML = `<span style="color: #ef5350;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #888;">${baseFormatted} g/h</span>`;
-            }
+          if (resultingRate <= targetLimit && !isNeg) {
+            rateDisplayEl.innerHTML = `<span style="color: #81c784;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #81c784;">${baseFormatted} g/h</span>`;
           } else {
-            rateDisplayEl.innerHTML = `<span style="color: #a5d6a7;">${resultingRate.toFixed(2)} g/h</span>`;
+            rateDisplayEl.innerHTML = `<span style="color: #ef5350;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #888;">${baseFormatted} g/h</span>`;
           }
         } else {
           rateDisplayEl.innerText = '-';
@@ -1231,10 +1216,7 @@
         var lastCard = document.getElementById('lastDoseStatsContent');
         var timeLabel = document.getElementById('lastDoseTimeLabel');
 
-        var benchmarkRate = 1.25;
-        if (last && last.doseNumber) {
-          benchmarkRate = getBenchmarkRateForDose(data, parseInt(last.doseNumber, 10));
-        }
+        var targetLimit = 1.22;
 
         if (!last) {
           timeLabel.innerText = '';
@@ -1246,11 +1228,10 @@
 
           var lastRateVal = getParsedAmount(last.rate);
           var lastRateColor = '#ffffff';
-
           var rateDisplayString = '-';
+
           if (parseInt(last.doseNumber, 10) > 1 && lastRateVal > 0) {
             rateDisplayString = cleanDisplay(last.rate) + ' g/h';
-            var targetLimit = Math.round((benchmarkRate - 0.02) * 100) / 100;
             if (lastRateVal > targetLimit) {
               lastRateColor = '#ef5350';
             }
@@ -1273,8 +1254,7 @@
 
         if (validDoseCount > 1 && valuesRateVal > 0) {
           valuesRateDisplayString = cleanDisplay(data.avgRate) + ' g/h';
-          var targetLimitVal = Math.round((benchmarkRate - 0.02) * 100) / 100;
-          if (valuesRateVal > targetLimitVal) {
+          if (valuesRateVal > targetLimit) {
             valuesRateColor = '#ef5350';
           }
         }
