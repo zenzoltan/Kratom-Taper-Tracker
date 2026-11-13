@@ -689,7 +689,7 @@
         }
 
         var initialDelta = 0;
-        if (validDoses.length >= 1) { // FONTOS JAVÍTÁS: MÁR AZ 1. ADAG UTÁN IS BETÖLTI AZ ADÓSSÁGOT!
+        if (validDoses.length >= 1) { 
           var storedDiffKey = 'taper_diff_v5_' + sheetKey + '_' + dateVal + '_' + validDoses.length;
           var savedDiffVal = localStorage.getItem(storedDiffKey);
           if (savedDiffVal !== null) {
@@ -788,7 +788,7 @@
           if (intHours > 0) {
             var initialDelta = 0;
             var prevDoseNum = currentRecordedCount; 
-            if (prevDoseNum >= 1) { // FONTOS JAVÍTÁS: HELYESEN OLVASSA BE AZ ELŐZŐ ADÓSSÁGOT!
+            if (prevDoseNum >= 1) { 
                 var storedDiffKey = 'taper_diff_v5_' + sheetKey + '_' + dateVal + '_' + prevDoseNum;
                 var savedDiffVal = localStorage.getItem(storedDiffKey);
                 if (savedDiffVal !== null) {
@@ -800,7 +800,8 @@
             var exactRec = initialDelta + (recommendationRate * intHours);
 
             if (amountVal > exactRec + 0.005) { 
-                // Ha túlfogyaszt, azonnal kiszámoljuk a valós magas rátát
+                // PREVIEW: Ha túlfogyasztás történik (többet ír be, mint a javasolt), 
+                // azonnal kiírja a megugrott rátát (adósság nélkülit).
                 resultingRate = (amountVal - initialDelta) / intHours;
             } else {
                 resultingRate = recommendationRate;
@@ -902,7 +903,6 @@
           var curTot = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.').trim()) || 0;
           currentStatsData.dailyTotal = (curTot + amountVal).toFixed(2) + ' g';
 
-          // Itt is rögzítjük az elvárt rátát a fals kerekítés helyett
           var calculatedDoseRate = '-';
           if (valid.length > 1) {
              calculatedDoseRate = getRecommendationRate(dateStr).toFixed(2);
@@ -1319,7 +1319,7 @@
           if (lastIntHours > 0) {
               var exactRec = prevDelta + (recommendationRate * lastIntHours);
               if (lAmt > exactRec + 0.005) { 
-                  // FONTOS JAVÍTÁS: ITT SZÁMOLJA KI ÉS MENTI EL A KÁRTYÁRA A MAGAS RÁTÁT ADÓSSÁGNÁL
+                  // KÁRTYA: Itt rögzíti a magas rátát a mentés pillanatában
                   calcRate = (lAmt - prevDelta) / lastIntHours;
               }
           }
@@ -1328,7 +1328,8 @@
               lastIntHours: lastIntHours,
               initialDelta: initialDelta,
               recRate: recommendationRate,
-              baseRate: targetLimit
+              baseRate: targetLimit,
+              startingHighRate: calcRate // Ezt az induló magas rátát viszi tovább
           };
 
           var lastRateColor = '#ffffff';
@@ -1486,11 +1487,14 @@
             var elapsedH = totalMinutes / 60;
             var currentNet = p.initialDelta + (p.recRate * elapsedH);
             
-            var displayRate = p.recRate; 
+            var displayRate = p.recRate; // Spórolásnál (és nullára futás után) fix 1.21
             
             if (currentNet < -0.005 && p.lastIntHours > 0) {
-                var debtRem = -currentNet;
-                displayRate = p.recRate + (debtRem / (p.lastIntHours + elapsedH));
+                // ÉLŐ VISSZASZÁMLÁLÁS:
+                // A magas rátát mossa össze az azóta eltelt üresjárat (nulla fogyasztás) idejével.
+                var totalElapsed = p.lastIntHours + elapsedH;
+                var totalEatenInSegment = p.startingHighRate * p.lastIntHours; // Grammok, amik generálták a büntetést
+                displayRate = totalEatenInSegment / totalElapsed; 
             }
             
             var rateEl = document.getElementById('liveRateDisplayVal');
