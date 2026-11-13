@@ -345,7 +345,7 @@
       var isManualTimeSet = false;
       var activeDayType = 'Szabadnap';
       var lastRawRecommendation = null;
-      window.liveRateParams = null; // Globális változó a dinamikus ráta leégéséhez
+      window.liveRateParams = null; 
 
       function getDoseCap(dateStr) {
         var base = new Date(2026, 10, 10);
@@ -362,13 +362,13 @@
       }
 
       function getRecommendationRate(dateStr) {
-        var baseDate = new Date(2026, 10, 13); // 2026. november 13.
+        var baseDate = new Date(2026, 10, 13); 
         var parts = (dateStr || '').split('-');
         if (parts.length === 3) {
           var curDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
           var diffDays = Math.floor((curDate.getTime() - baseDate.getTime()) / (1000 * 60 * 60 * 24));
           if (diffDays > 0) {
-            var steps = Math.floor(diffDays / 3); // 3 naponta csökken
+            var steps = Math.floor(diffDays / 3); 
             return Math.max(0.1, 1.21 - (steps * 0.01));
           }
         }
@@ -489,7 +489,7 @@
         loadStats();
 
         setInterval(syncClockToLiveTime, 1000);
-        setInterval(updateLiveElapsedTime, 15000);
+        setInterval(updateLiveElapsedTime, 5000); // Kicsit gyorsabb frissítés az élő rátához
       };
 
       function syncClockToLiveTime() {
@@ -690,7 +690,7 @@
 
         var initialDelta = 0;
         if (validDoses.length > 1) {
-          var storedDiffKey = 'taper_diff_v3_' + sheetKey + '_' + dateVal + '_' + validDoses.length;
+          var storedDiffKey = 'taper_diff_v4_' + sheetKey + '_' + dateVal + '_' + validDoses.length;
           var savedDiffVal = localStorage.getItem(storedDiffKey);
           if (savedDiffVal !== null) {
             var sVal = parseFloat(savedDiffVal);
@@ -775,7 +775,7 @@
         var recommendationRate = getRecommendationRate(dateVal); // pl. 1.21
         var targetLimit = recommendationRate + 0.01;             // pl. 1.22
         
-        var resultingRate = recommendationRate; // Alapértelmezetten a tökéletes célrátát mutatjuk (spórolás/javasolt elfogadása esetén)
+        var resultingRate = recommendationRate; 
 
         var curM = parseTimeToMinutes(document.getElementById('time').value.trim());
         var lastM = (last && last.time) ? parseTimeToMinutes(last.time) : null;
@@ -787,7 +787,7 @@
           
           if (intHours > 0) {
             var initialDelta = 0;
-            var storedDiffKey = 'taper_diff_v3_' + sheetKey + '_' + dateVal + '_' + nextDoseNum;
+            var storedDiffKey = 'taper_diff_v4_' + sheetKey + '_' + dateVal + '_' + nextDoseNum;
             var savedDiffVal = localStorage.getItem(storedDiffKey);
             if (savedDiffVal !== null) {
               var sVal = parseFloat(savedDiffVal);
@@ -796,23 +796,10 @@
 
             var exactRec = initialDelta + (recommendationRate * intHours);
 
-            if (isNeg || amountVal === 0) {
-                // Adósságban vagyunk, várjuk hogy nullára érjen
-                if (initialDelta < 0 && exactRec < 0) {
-                    if (window.liveRateParams && window.liveRateParams.lastIntHours > 0) {
-                        var debtRemaining = -exactRec;
-                        resultingRate = recommendationRate + (debtRemaining / (window.liveRateParams.lastIntHours + intHours));
-                    }
-                }
+            if (amountVal > exactRec + 0.005) { 
+                resultingRate = (amountVal - initialDelta) / intHours;
             } else {
-                // Pozitív érték beírása
-                if (amountVal > exactRec + 0.005) { 
-                    // Ha túllépi a javasoltat (adósságot csinál), kiírjuk a valós magas rátát
-                    resultingRate = (amountVal - initialDelta) / intHours;
-                } else {
-                    // Spórolás vagy pontos betartás -> Mesterégesen fixen rögzítjük 1.21-en
-                    resultingRate = recommendationRate;
-                }
+                resultingRate = recommendationRate;
             }
           }
         }
@@ -877,7 +864,7 @@
           initialDelta = lastRawRecommendation - amountVal;
         }
 
-        localStorage.setItem('taper_diff_v3_' + sheetName + '_' + dateStr + '_' + currentDoseIndex, initialDelta);
+        localStorage.setItem('taper_diff_v4_' + sheetName + '_' + dateStr + '_' + currentDoseIndex, initialDelta);
 
         isSaving = true;
         isUserModified = false;
@@ -994,7 +981,7 @@
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
 
-        localStorage.removeItem('taper_diff_v3_' + sheetName + '_' + dateStr + '_' + doseNum);
+        localStorage.removeItem('taper_diff_v4_' + sheetName + '_' + dateStr + '_' + doseNum);
 
         if (currentStatsData && currentStatsData.allDoses) {
           var idx = doseNum - 1;
@@ -1272,7 +1259,7 @@
         var recommendationRate = getRecommendationRate(dateVal);
         var targetLimit = recommendationRate + 0.01;
         
-        window.liveRateParams = null; // Reseteljük a globális változót minden frissítésnél
+        window.liveRateParams = null;
 
         if (!last) {
           if (timeLabel) timeLabel.innerText = '';
@@ -1305,7 +1292,7 @@
           }
           
           var initialDelta = 0;
-          var storedDiffKey = 'taper_diff_v3_' + sheetKey + '_' + dateVal + '_' + nextDoseNum;
+          var storedDiffKey = 'taper_diff_v4_' + sheetKey + '_' + dateVal + '_' + nextDoseNum;
           var savedDiffVal = localStorage.getItem(storedDiffKey);
           if (savedDiffVal !== null) {
               var sVal = parseFloat(savedDiffVal);
@@ -1323,7 +1310,7 @@
             lastCard.innerHTML = `
               <div class="stat-row"><span class="stat-label">Elapsed</span><span id="liveElapsedDisplay" class="stat-value highlight-value">Calculating...</span></div>
               <div class="stat-row"><span class="stat-label">Awake</span><span class="stat-value">${cleanDisplay(last.awakeTime)}</span></div>
-              <div class="stat-row"><span class="stat-label">Diff</span><span class="stat-value">${cleanDisplay(last.diff)}</span></div>
+              <div class="stat-row"><span class="stat-label">Diff</span><span id="liveDiffDisplayVal" class="stat-value">${cleanDisplay(last.diff)}</span></div>
               <div class="stat-row"><span class="stat-label">Rate</span><span class="stat-value" id="liveRateDisplayVal">...</span></div>
             `;
             updateLiveElapsedTime();
@@ -1465,17 +1452,19 @@
             var elapsedH = totalMinutes / 60;
             var currentNet = p.initialDelta + (p.recRate * elapsedH);
             
-            var displayRate = p.recRate; // Alapértelmezett (pontos és spórolt is ez)
+            var displayRate = p.recRate; // Alapértelmezett (spórolás és 0 adósság esetén fixen)
             
-            if (currentNet < 0 && p.lastIntHours > 0) {
-                // Adósságban vagyunk, dinamikusan szivárog lefelé a ráta a magas értékről 1.21-re
+            if (currentNet < -0.005 && p.lastIntHours > 0) {
+                // Adósságban vagyunk, az idő arányában mosódik vissza 1.21-re
                 var debtRem = -currentNet;
                 displayRate = p.recRate + (debtRem / (p.lastIntHours + elapsedH));
             }
             
-            var color = (displayRate > p.recRate) ? '#ef5350' : '#81c784';
-            // Spórolásnál és normál menetnél fix 1.21-et mutat (zölden)
-            document.getElementById('liveRateDisplayVal').innerHTML = `<span style="color: ${color};">${displayRate.toFixed(2)}</span> <span style="color: #666;">/</span> <span style="color: #888;">${p.baseRate.toFixed(2)} g/h</span>`;
+            var rateEl = document.getElementById('liveRateDisplayVal');
+            if (rateEl) {
+                var color = (displayRate > p.recRate + 0.005) ? '#ef5350' : '#81c784';
+                rateEl.innerHTML = `<span style="color: ${color};">${displayRate.toFixed(2)}</span> <span style="color: #666;">/</span> <span style="color: #888;">${p.baseRate.toFixed(2)} g/h</span>`;
+            }
         }
       }
     </script>
