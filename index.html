@@ -362,7 +362,7 @@
       }
 
       function getRecommendationRate(dateStr) {
-        var baseDate = new Date(2026, 10, 13); 
+        var baseDate = new Date(2026, 10, 13); // 2026. november 13.
         var parts = (dateStr || '').split('-');
         if (parts.length === 3) {
           var curDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
@@ -489,7 +489,7 @@
         loadStats();
 
         setInterval(syncClockToLiveTime, 1000);
-        setInterval(updateLiveElapsedTime, 5000); // Kicsit gyorsabb frissítés az élő rátához
+        setInterval(updateLiveElapsedTime, 5000);
       };
 
       function syncClockToLiveTime() {
@@ -689,8 +689,8 @@
         }
 
         var initialDelta = 0;
-        if (validDoses.length > 1) {
-          var storedDiffKey = 'taper_diff_v4_' + sheetKey + '_' + dateVal + '_' + validDoses.length;
+        if (validDoses.length >= 1) { // FONTOS JAVÍTÁS: MÁR AZ 1. ADAG UTÁN IS BETÖLTI AZ ADÓSSÁGOT!
+          var storedDiffKey = 'taper_diff_v5_' + sheetKey + '_' + dateVal + '_' + validDoses.length;
           var savedDiffVal = localStorage.getItem(storedDiffKey);
           if (savedDiffVal !== null) {
             var sVal = parseFloat(savedDiffVal);
@@ -705,7 +705,7 @@
         var netNeeded = initialDelta + naturalAccrual;
 
         if (validDoses.length === 1 && elapsedMinFromLast <= 10) {
-          netNeeded = initialDelta > 0 ? initialDelta : 0.0;
+          netNeeded = initialDelta;
         }
 
         var uncappedNeeded = netNeeded;
@@ -772,8 +772,8 @@
           return;
         }
 
-        var recommendationRate = getRecommendationRate(dateVal); // pl. 1.21
-        var targetLimit = recommendationRate + 0.01;             // pl. 1.22
+        var recommendationRate = getRecommendationRate(dateVal); 
+        var targetLimit = recommendationRate + 0.01;             
         
         var resultingRate = recommendationRate; 
 
@@ -787,16 +787,20 @@
           
           if (intHours > 0) {
             var initialDelta = 0;
-            var storedDiffKey = 'taper_diff_v4_' + sheetKey + '_' + dateVal + '_' + nextDoseNum;
-            var savedDiffVal = localStorage.getItem(storedDiffKey);
-            if (savedDiffVal !== null) {
-              var sVal = parseFloat(savedDiffVal);
-              if (!isNaN(sVal)) initialDelta = sVal;
+            var prevDoseNum = currentRecordedCount; 
+            if (prevDoseNum >= 1) { // FONTOS JAVÍTÁS: HELYESEN OLVASSA BE AZ ELŐZŐ ADÓSSÁGOT!
+                var storedDiffKey = 'taper_diff_v5_' + sheetKey + '_' + dateVal + '_' + prevDoseNum;
+                var savedDiffVal = localStorage.getItem(storedDiffKey);
+                if (savedDiffVal !== null) {
+                  var sVal = parseFloat(savedDiffVal);
+                  if (!isNaN(sVal)) initialDelta = sVal;
+                }
             }
 
             var exactRec = initialDelta + (recommendationRate * intHours);
 
             if (amountVal > exactRec + 0.005) { 
+                // Ha túlfogyaszt, azonnal kiszámoljuk a valós magas rátát
                 resultingRate = (amountVal - initialDelta) / intHours;
             } else {
                 resultingRate = recommendationRate;
@@ -864,7 +868,7 @@
           initialDelta = lastRawRecommendation - amountVal;
         }
 
-        localStorage.setItem('taper_diff_v4_' + sheetName + '_' + dateStr + '_' + currentDoseIndex, initialDelta);
+        localStorage.setItem('taper_diff_v5_' + sheetName + '_' + dateStr + '_' + currentDoseIndex, initialDelta);
 
         isSaving = true;
         isUserModified = false;
@@ -898,6 +902,7 @@
           var curTot = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.').trim()) || 0;
           currentStatsData.dailyTotal = (curTot + amountVal).toFixed(2) + ' g';
 
+          // Itt is rögzítjük az elvárt rátát a fals kerekítés helyett
           var calculatedDoseRate = '-';
           if (valid.length > 1) {
              calculatedDoseRate = getRecommendationRate(dateStr).toFixed(2);
@@ -981,7 +986,7 @@
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
 
-        localStorage.removeItem('taper_diff_v4_' + sheetName + '_' + dateStr + '_' + doseNum);
+        localStorage.removeItem('taper_diff_v5_' + sheetName + '_' + dateStr + '_' + doseNum);
 
         if (currentStatsData && currentStatsData.allDoses) {
           var idx = doseNum - 1;
@@ -1291,12 +1296,32 @@
               }
           }
           
+          var prevDelta = 0;
+          var prevDoseNum = last.doseNumber - 1;
+          if (prevDoseNum >= 1) {
+              var storedPrevDiff = localStorage.getItem('taper_diff_v5_' + sheetKey + '_' + dateVal + '_' + prevDoseNum);
+              if (storedPrevDiff !== null) {
+                  prevDelta = parseFloat(storedPrevDiff) || 0;
+              }
+          }
+          
           var initialDelta = 0;
-          var storedDiffKey = 'taper_diff_v4_' + sheetKey + '_' + dateVal + '_' + nextDoseNum;
+          var storedDiffKey = 'taper_diff_v5_' + sheetKey + '_' + dateVal + '_' + last.doseNumber;
           var savedDiffVal = localStorage.getItem(storedDiffKey);
           if (savedDiffVal !== null) {
               var sVal = parseFloat(savedDiffVal);
               if (!isNaN(sVal)) initialDelta = sVal;
+          }
+          
+          var lAmt = getParsedAmount(last.amount);
+          var calcRate = recommendationRate;
+          
+          if (lastIntHours > 0) {
+              var exactRec = prevDelta + (recommendationRate * lastIntHours);
+              if (lAmt > exactRec + 0.005) { 
+                  // FONTOS JAVÍTÁS: ITT SZÁMOLJA KI ÉS MENTI EL A KÁRTYÁRA A MAGAS RÁTÁT ADÓSSÁGNÁL
+                  calcRate = (lAmt - prevDelta) / lastIntHours;
+              }
           }
           
           window.liveRateParams = {
@@ -1306,12 +1331,22 @@
               baseRate: targetLimit
           };
 
+          var lastRateColor = '#ffffff';
+          var rateDisplayString = '-';
+
+          if (parseInt(last.doseNumber, 10) > 1) {
+            rateDisplayString = calcRate.toFixed(2) + ' g/h';
+            if (calcRate > targetLimit) {
+              lastRateColor = '#ef5350';
+            }
+          }
+
           if (lastCard) {
             lastCard.innerHTML = `
               <div class="stat-row"><span class="stat-label">Elapsed</span><span id="liveElapsedDisplay" class="stat-value highlight-value">Calculating...</span></div>
               <div class="stat-row"><span class="stat-label">Awake</span><span class="stat-value">${cleanDisplay(last.awakeTime)}</span></div>
               <div class="stat-row"><span class="stat-label">Diff</span><span id="liveDiffDisplayVal" class="stat-value">${cleanDisplay(last.diff)}</span></div>
-              <div class="stat-row"><span class="stat-label">Rate</span><span class="stat-value" id="liveRateDisplayVal">...</span></div>
+              <div class="stat-row"><span class="stat-label">Rate</span><span class="stat-value" id="liveRateDisplayVal" style="color: ${lastRateColor};">${rateDisplayString}</span></div>
             `;
             updateLiveElapsedTime();
           }
@@ -1446,16 +1481,14 @@
           el.innerText = hours + ' h ' + String(mins).padStart(2, '0') + ' min';
         }
         
-        // --- DINAMIKUS ADÓSSÁG LEÉGÉS KIJELZÉSE ---
         if (window.liveRateParams && document.getElementById('liveRateDisplayVal')) {
             var p = window.liveRateParams;
             var elapsedH = totalMinutes / 60;
             var currentNet = p.initialDelta + (p.recRate * elapsedH);
             
-            var displayRate = p.recRate; // Alapértelmezett (spórolás és 0 adósság esetén fixen)
+            var displayRate = p.recRate; 
             
             if (currentNet < -0.005 && p.lastIntHours > 0) {
-                // Adósságban vagyunk, az idő arányában mosódik vissza 1.21-re
                 var debtRem = -currentNet;
                 displayRate = p.recRate + (debtRem / (p.lastIntHours + elapsedH));
             }
