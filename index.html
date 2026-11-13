@@ -345,7 +345,9 @@
       var isManualTimeSet = false;
       var activeDayType = 'Szabadnap';
       var lastRawRecommendation = null;
+      
       window.liveRateParams = null; 
+      window.currentTypingRate = null; // A "lefényképezett" ráta mentés előtt
 
       function getDoseCap(dateStr) {
         var base = new Date(2026, 10, 10);
@@ -362,7 +364,7 @@
       }
 
       function getRecommendationRate(dateStr) {
-        var baseDate = new Date(2026, 10, 13); 
+        var baseDate = new Date(2026, 10, 13); // 2026. november 13.
         var parts = (dateStr || '').split('-');
         if (parts.length === 3) {
           var curDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
@@ -529,6 +531,7 @@
         isManualTimeSet = false;
         lastRawRecommendation = null;
         window.liveRateParams = null;
+        window.currentTypingRate = null;
         
         var previewBox = document.getElementById('livePreviewBox');
         if (previewBox) previewBox.style.display = 'none';
@@ -690,7 +693,7 @@
 
         var initialDelta = 0;
         if (validDoses.length >= 1) { 
-          var storedDiffKey = 'taper_diff_v5_' + sheetKey + '_' + dateVal + '_' + validDoses.length;
+          var storedDiffKey = 'taper_diff_v6_' + sheetKey + '_' + dateVal + '_' + validDoses.length;
           var savedDiffVal = localStorage.getItem(storedDiffKey);
           if (savedDiffVal !== null) {
             var sVal = parseFloat(savedDiffVal);
@@ -774,8 +777,19 @@
 
         var recommendationRate = getRecommendationRate(dateVal); 
         var targetLimit = recommendationRate + 0.01;             
-        
         var resultingRate = recommendationRate; 
+
+        // PREVIEW DELEGÁLÁSA: Ha a mentett (adósság) van a mezőben, adja át a frissítő motornak
+        if (isNeg || amountVal === 0) {
+            if (window.liveRateParams) {
+                updateLiveElapsedTime();
+            } else {
+                var bF = targetLimit.toFixed(2);
+                var cF = recommendationRate.toFixed(2);
+                rateDisplayEl.innerHTML = `<span style="color: #81c784;">${cF}</span> <span style="color: #666;">/</span> <span style="color: #888;">${bF} g/h</span>`;
+            }
+            return;
+        }
 
         var curM = parseTimeToMinutes(document.getElementById('time').value.trim());
         var lastM = (last && last.time) ? parseTimeToMinutes(last.time) : null;
@@ -785,38 +799,30 @@
           if (diffMin < 0) diffMin += 1440;
           var intHours = diffMin / 60;
           
-          if (isNeg || amountVal === 0) {
-              if (window.liveRateParams) {
-                  var p = window.liveRateParams;
-                  var currentNet = p.initialDelta + (p.recRate * intHours);
-                  if (currentNet < -0.005 && p.lastIntHours > 0) {
-                      var debtRem = -currentNet;
-                      resultingRate = p.recRate + (debtRem / (p.lastIntHours + intHours));
+          if (intHours > 0) {
+              var initialDelta = 0;
+              var prevDoseNum = currentRecordedCount; 
+              if (prevDoseNum >= 1) { 
+                  var storedDiffKey = 'taper_diff_v6_' + sheetKey + '_' + dateVal + '_' + prevDoseNum;
+                  var savedDiffVal = localStorage.getItem(storedDiffKey);
+                  if (savedDiffVal !== null) {
+                    var sVal = parseFloat(savedDiffVal);
+                    if (!isNaN(sVal)) initialDelta = sVal;
                   }
               }
-          } else {
-              if (intHours > 0) {
-                  var initialDelta = 0;
-                  var prevDoseNum = currentRecordedCount; 
-                  if (prevDoseNum >= 1) { 
-                      var storedDiffKey = 'taper_diff_v5_' + sheetKey + '_' + dateVal + '_' + prevDoseNum;
-                      var savedDiffVal = localStorage.getItem(storedDiffKey);
-                      if (savedDiffVal !== null) {
-                        var sVal = parseFloat(savedDiffVal);
-                        if (!isNaN(sVal)) initialDelta = sVal;
-                      }
-                  }
 
-                  var exactRec = initialDelta + (recommendationRate * intHours);
+              var exactRec = initialDelta + (recommendationRate * intHours);
 
-                  if (amountVal > exactRec + 0.005) { 
-                      resultingRate = (amountVal - initialDelta) / intHours;
-                  } else {
-                      resultingRate = recommendationRate;
-                  }
+              if (amountVal > exactRec + 0.005) { 
+                  resultingRate = (amountVal - initialDelta) / intHours;
+              } else {
+                  resultingRate = recommendationRate;
               }
           }
         }
+
+        // FOTÓZZUK LE AZ ÉLŐ RÁTÁT, HOGY A MENTÉSNÉL NE UGORHASSON EL!
+        window.currentTypingRate = resultingRate; 
 
         var baseFormatted = targetLimit.toFixed(2);
         var currentFormatted = resultingRate.toFixed(2);
@@ -826,6 +832,26 @@
         } else {
           rateDisplayEl.innerHTML = `<span style="color: #ef5350;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #888;">${baseFormatted} g/h</span>`;
         }
+      }
+
+      function onWakeTimeChange() {
+        var sheetName = document.getElementById('sheetName').value;
+        var dateStr = document.getElementById('doseDate').value;
+        var wakeVal = document.getElementById('wakeTime').value.trim();
+
+        if (wakeVal && wakeVal.indexOf(':') === -1) return;
+
+        callApi({
+          action: 'saveWakeTime',
+          sheetName: sheetName,
+          dateStr: dateStr,
+          wakeTime: wakeVal
+        }, function(res) {
+          if (res && res.success) {
+            saveToLocalCache(sheetName, dateStr, res.stats);
+            renderAllStats(res.stats);
+          }
+        }, function(err) {});
       }
 
       function autoSubmit() {
@@ -858,8 +884,7 @@
           initialDelta = lastRawRecommendation - amountVal;
         }
 
-        // AZONNAL RÖGZÍTJÜK A LIVERATE PARAMÉTEREKET A MENTÉS PILLANATÁBAN, 
-        // ÍGY A PREVIEW SÁVBAN LÉVŐ MAGAS ÉRTÉK NEM UGORHAT VISSZA 1.21-RE!
+        // 1. ELMENTJÜK A PARAMÉTEREKET A MENTÉS PILLANATÁBAN, HOGY NE UGORJON
         var recommendationRate = getRecommendationRate(dateStr);
         var targetLimit = recommendationRate + 0.01;
         var lastIntHours = 0;
@@ -877,38 +902,30 @@
                if (d <= 0) d += 1440;
                lastIntHours = d / 60;
            }
-        }
-        
-        var prevDelta = 0;
-        var prevDoseNum = currentDoseIndex - 1;
-        if (prevDoseNum >= 1) {
-            var storedPrevDiff = localStorage.getItem('taper_diff_v5_' + sheetName + '_' + dateStr + '_' + prevDoseNum);
-            if (storedPrevDiff !== null) {
-                prevDelta = parseFloat(storedPrevDiff) || 0;
-            }
-        }
-        
-        var calcRate = recommendationRate;
-        if (lastIntHours > 0) {
-            var exactRec = prevDelta + (recommendationRate * lastIntHours);
-            if (amountVal > exactRec + 0.005) { 
-                calcRate = (amountVal - prevDelta) / lastIntHours;
-            }
+        } else if (!last && currentStatsData && currentStatsData.wakeTime && curM !== null) {
+           var wM = parseTimeToMinutes(currentStatsData.wakeTime);
+           if (wM !== null) {
+               var d = curM - wM;
+               if (d <= 0) d += 1440;
+               lastIntHours = d / 60;
+           }
         }
         
         window.liveRateParams = {
+            doseNumber: currentDoseIndex,
             lastIntHours: lastIntHours,
             initialDelta: initialDelta,
             recRate: recommendationRate,
             baseRate: targetLimit,
-            startingHighRate: calcRate
+            startingHighRate: window.currentTypingRate || recommendationRate 
         };
 
-        localStorage.setItem('taper_diff_v5_' + sheetName + '_' + dateStr + '_' + currentDoseIndex, initialDelta);
+        localStorage.setItem('taper_diff_v6_' + sheetName + '_' + dateStr + '_' + currentDoseIndex, initialDelta);
 
         isSaving = true;
         isUserModified = false;
         isManualTimeSet = false;
+        document.getElementById('livePreviewBox').style.display = 'none';
 
         if (currentStatsData && currentStatsData.allDoses) {
           var valid = [];
@@ -939,7 +956,7 @@
 
           var calculatedDoseRate = '-';
           if (valid.length > 1) {
-             calculatedDoseRate = getRecommendationRate(dateStr).toFixed(2);
+             calculatedDoseRate = recommendationRate.toFixed(2);
           }
 
           currentStatsData.lastDose = {
@@ -1020,7 +1037,7 @@
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
 
-        localStorage.removeItem('taper_diff_v5_' + sheetName + '_' + dateStr + '_' + doseNum);
+        localStorage.removeItem('taper_diff_v6_' + sheetName + '_' + dateStr + '_' + doseNum);
 
         if (currentStatsData && currentStatsData.allDoses) {
           var idx = doseNum - 1;
@@ -1297,8 +1314,6 @@
 
         var recommendationRate = getRecommendationRate(dateVal);
         var targetLimit = recommendationRate + 0.01;
-        
-        window.liveRateParams = null;
 
         if (!last) {
           if (timeLabel) timeLabel.innerText = '';
@@ -1309,61 +1324,65 @@
           lastRecordedTimeStr = last.time;
           
           var validDoses = data.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0);
-          var nextDoseNum = validDoses.length + 1;
+          var savedDoseNum = validDoses.length;
           
-          var lastIntHours = 0;
-          if (validDoses.length > 1) {
-              var pM = parseTimeToMinutes(validDoses[validDoses.length - 2].time);
-              var lM = parseTimeToMinutes(last.time);
-              if (pM !== null && lM !== null) {
-                  var d = lM - pM;
-                  if (d <= 0) d += 1440;
-                  lastIntHours = d / 60;
+          // 2. HA A SZERVER VÁLASZOL, NE ÍRJA FELÜL A BEFAGYASZTOTT RÁTÁT!
+          if (!window.liveRateParams || window.liveRateParams.doseNumber !== savedDoseNum) {
+              var lastIntHours = 0;
+              if (validDoses.length > 1) {
+                  var pM = parseTimeToMinutes(validDoses[validDoses.length - 2].time);
+                  var lM = parseTimeToMinutes(last.time);
+                  if (pM !== null && lM !== null) {
+                      var d = lM - pM;
+                      if (d <= 0) d += 1440;
+                      lastIntHours = d / 60;
+                  }
+              } else if (validDoses.length === 1 && data.wakeTime) {
+                  var wM = parseTimeToMinutes(data.wakeTime);
+                  var lM = parseTimeToMinutes(last.time);
+                  if (wM !== null && lM !== null) {
+                      var d = lM - wM;
+                      if (d <= 0) d += 1440;
+                      lastIntHours = d / 60;
+                  }
               }
-          } else if (validDoses.length === 1 && data.wakeTime) {
-              var wM = parseTimeToMinutes(data.wakeTime);
-              var lM = parseTimeToMinutes(last.time);
-              if (wM !== null && lM !== null) {
-                  var d = lM - wM;
-                  if (d <= 0) d += 1440;
-                  lastIntHours = d / 60;
+              
+              var prevDelta = 0;
+              var prevDoseNum = last.doseNumber - 1;
+              if (prevDoseNum >= 1) {
+                  var storedPrevDiff = localStorage.getItem('taper_diff_v6_' + sheetKey + '_' + dateVal + '_' + prevDoseNum);
+                  if (storedPrevDiff !== null) {
+                      prevDelta = parseFloat(storedPrevDiff) || 0;
+                  }
               }
-          }
-          
-          var prevDelta = 0;
-          var prevDoseNum = last.doseNumber - 1;
-          if (prevDoseNum >= 1) {
-              var storedPrevDiff = localStorage.getItem('taper_diff_v5_' + sheetKey + '_' + dateVal + '_' + prevDoseNum);
-              if (storedPrevDiff !== null) {
-                  prevDelta = parseFloat(storedPrevDiff) || 0;
+              
+              var initialDelta = 0;
+              var storedDiffKey = 'taper_diff_v6_' + sheetKey + '_' + dateVal + '_' + last.doseNumber;
+              var savedDiffVal = localStorage.getItem(storedDiffKey);
+              if (savedDiffVal !== null) {
+                  var sVal = parseFloat(savedDiffVal);
+                  if (!isNaN(sVal)) initialDelta = sVal;
               }
-          }
-          
-          var initialDelta = 0;
-          var storedDiffKey = 'taper_diff_v5_' + sheetKey + '_' + dateVal + '_' + last.doseNumber;
-          var savedDiffVal = localStorage.getItem(storedDiffKey);
-          if (savedDiffVal !== null) {
-              var sVal = parseFloat(savedDiffVal);
-              if (!isNaN(sVal)) initialDelta = sVal;
-          }
-          
-          var lAmt = getParsedAmount(last.amount);
-          var calcRate = recommendationRate;
-          
-          if (lastIntHours > 0) {
-              var exactRec = prevDelta + (recommendationRate * lastIntHours);
-              if (lAmt > exactRec + 0.005) { 
-                  calcRate = (lAmt - prevDelta) / lastIntHours;
+              
+              var lAmt = getParsedAmount(last.amount);
+              var calcRate = recommendationRate;
+              
+              if (lastIntHours > 0) {
+                  var exactRec = prevDelta + (recommendationRate * lastIntHours);
+                  if (lAmt > exactRec + 0.005) { 
+                      calcRate = (lAmt - prevDelta) / lastIntHours;
+                  }
               }
+              
+              window.liveRateParams = {
+                  doseNumber: savedDoseNum,
+                  lastIntHours: lastIntHours,
+                  initialDelta: initialDelta,
+                  recRate: recommendationRate,
+                  baseRate: targetLimit,
+                  startingHighRate: calcRate 
+              };
           }
-          
-          window.liveRateParams = {
-              lastIntHours: lastIntHours,
-              initialDelta: initialDelta,
-              recRate: recommendationRate,
-              baseRate: targetLimit,
-              startingHighRate: calcRate 
-          };
 
           if (lastCard) {
             lastCard.innerHTML = `
