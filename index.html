@@ -782,30 +782,42 @@
 
         if (curM !== null && lastM !== null) {
           var diffMin = curM - lastM;
-          if (diffMin <= 0) diffMin += 1440;
+          if (diffMin < 0) diffMin += 1440; // nullát is engedjük, ha most mentett
           var intHours = diffMin / 60;
           
-          if (intHours > 0) {
-            var initialDelta = 0;
-            var prevDoseNum = currentRecordedCount; 
-            if (prevDoseNum >= 1) { 
-                var storedDiffKey = 'taper_diff_v5_' + sheetKey + '_' + dateVal + '_' + prevDoseNum;
-                var savedDiffVal = localStorage.getItem(storedDiffKey);
-                if (savedDiffVal !== null) {
-                  var sVal = parseFloat(savedDiffVal);
-                  if (!isNaN(sVal)) initialDelta = sVal;
-                }
-            }
+          if (isNeg || amountVal === 0) {
+              // TÖKÉLETES SZINKRON: Ha adósságot mutat a mező (- érték), a preview
+              // folytatja a mentés pillanatában elkezdett hűtési ciklust
+              if (window.liveRateParams) {
+                  var p = window.liveRateParams;
+                  var currentNet = p.initialDelta + (p.recRate * intHours);
+                  if (currentNet < -0.005 && p.lastIntHours > 0) {
+                      var debtRem = -currentNet;
+                      resultingRate = p.recRate + (debtRem / (p.lastIntHours + intHours));
+                  }
+              }
+          } else {
+              // Ha manuálisan írsz be pozitív értéket
+              if (intHours > 0) {
+                  var initialDelta = 0;
+                  var prevDoseNum = currentRecordedCount; 
+                  if (prevDoseNum >= 1) { 
+                      var storedDiffKey = 'taper_diff_v5_' + sheetKey + '_' + dateVal + '_' + prevDoseNum;
+                      var savedDiffVal = localStorage.getItem(storedDiffKey);
+                      if (savedDiffVal !== null) {
+                        var sVal = parseFloat(savedDiffVal);
+                        if (!isNaN(sVal)) initialDelta = sVal;
+                      }
+                  }
 
-            var exactRec = initialDelta + (recommendationRate * intHours);
+                  var exactRec = initialDelta + (recommendationRate * intHours);
 
-            if (amountVal > exactRec + 0.005) { 
-                // PREVIEW: Ha túlfogyasztás történik (többet ír be, mint a javasolt), 
-                // azonnal kiírja a megugrott rátát (adósság nélkülit).
-                resultingRate = (amountVal - initialDelta) / intHours;
-            } else {
-                resultingRate = recommendationRate;
-            }
+                  if (amountVal > exactRec + 0.005) { 
+                      resultingRate = (amountVal - initialDelta) / intHours;
+                  } else {
+                      resultingRate = recommendationRate;
+                  }
+              }
           }
         }
 
@@ -1319,7 +1331,6 @@
           if (lastIntHours > 0) {
               var exactRec = prevDelta + (recommendationRate * lastIntHours);
               if (lAmt > exactRec + 0.005) { 
-                  // KÁRTYA: Itt rögzíti a magas rátát a mentés pillanatában
                   calcRate = (lAmt - prevDelta) / lastIntHours;
               }
           }
@@ -1329,7 +1340,7 @@
               initialDelta: initialDelta,
               recRate: recommendationRate,
               baseRate: targetLimit,
-              startingHighRate: calcRate // Ezt az induló magas rátát viszi tovább
+              startingHighRate: calcRate 
           };
 
           var lastRateColor = '#ffffff';
@@ -1487,13 +1498,11 @@
             var elapsedH = totalMinutes / 60;
             var currentNet = p.initialDelta + (p.recRate * elapsedH);
             
-            var displayRate = p.recRate; // Spórolásnál (és nullára futás után) fix 1.21
+            var displayRate = p.recRate; 
             
             if (currentNet < -0.005 && p.lastIntHours > 0) {
-                // ÉLŐ VISSZASZÁMLÁLÁS:
-                // A magas rátát mossa össze az azóta eltelt üresjárat (nulla fogyasztás) idejével.
                 var totalElapsed = p.lastIntHours + elapsedH;
-                var totalEatenInSegment = p.startingHighRate * p.lastIntHours; // Grammok, amik generálták a büntetést
+                var totalEatenInSegment = p.startingHighRate * p.lastIntHours; 
                 displayRate = totalEatenInSegment / totalElapsed; 
             }
             
