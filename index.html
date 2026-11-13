@@ -788,8 +788,8 @@
           var diffMin = curM - lastM;
           if (diffMin <= 0) diffMin += 1440;
           var intHours = diffMin / 60;
+          
           if (intHours > 0) {
-            // Adósság lekérése ehhez a szakaszhoz
             var initialDelta = 0;
             var storedDiffKey = 'taper_diff_v2_' + sheetKey + '_' + dateVal + '_' + nextDoseNum;
             var savedDiffVal = localStorage.getItem(storedDiffKey);
@@ -798,20 +798,57 @@
               if (!isNaN(sVal)) initialDelta = sVal;
             }
 
-            // Tökéletes visszafejtés: ha a mezőben lévő érték megegyezik a gép által ajánlottal, a ráta fixen a célráta.
-            var exactRecommended = Math.round((initialDelta + (recommendationRate * intHours)) * 100) / 100;
-            
-            if (Math.abs(amountVal - exactRecommended) < 0.005) {
-                resultingRate = recommendationRate;
+            if (isNeg || amountVal === 0) {
+              // Adósság ledolgozási ráta (visszafelé számolás az előző adagból)
+              var prevDose = null;
+              if (nextDoseNum > 2) {
+                for (var i = currentStatsData.allDoses.length - 1; i >= 0; i--) {
+                  if (currentStatsData.allDoses[i].hasData && currentStatsData.allDoses[i].doseNumber < last.doseNumber) {
+                    prevDose = currentStatsData.allDoses[i];
+                    break;
+                  }
+                }
+              }
+              var lastIntHours = 0;
+              if (prevDose && prevDose.time) {
+                var pM = parseTimeToMinutes(prevDose.time);
+                if (pM !== null) {
+                  var dM = lastM - pM;
+                  if (dM <= 0) dM += 1440;
+                  lastIntHours = dM / 60;
+                }
+              } else if (nextDoseNum === 2 && currentStatsData.wakeTime) {
+                var wM = parseTimeToMinutes(currentStatsData.wakeTime);
+                if (wM !== null) {
+                  var dM = lastM - wM;
+                  if (dM <= 0) dM += 1440;
+                  lastIntHours = dM / 60;
+                }
+              }
+              
+              if (lastIntHours > 0 && last && last.amount) {
+                var lAmt = parseFloat(String(last.amount).replace(',', '.').trim()) || 0;
+                // Összevont szakaszi ráta az adósság csökkentésének követésére
+                resultingRate = parseFloat((lAmt / (lastIntHours + intHours)).toFixed(2));
+              } else {
+                resultingRate = recommendationRate; 
+              }
             } else {
-                // Ha manuálisan eltérsz tőle, akkor kiszámolja az adósság nélküli valós tempót
-                resultingRate = (amountVal - initialDelta) / intHours;
+              // Normál javasolt vagy manuálisan beírt pozitív adag
+              var exactRec = Math.round((initialDelta + (recommendationRate * intHours)) * 100) / 100;
+              if (Math.abs(amountVal - exactRec) < 0.005) {
+                  // Ha a javasolt értéket hagyta jóvá, a kerekítési zörej nélkül pont a célrátát mutatja
+                  resultingRate = recommendationRate;
+              } else {
+                  // Manuális átírás esetén a valós tempót számolja az elhozott spórolás nélkül
+                  resultingRate = parseFloat(((amountVal - initialDelta) / intHours).toFixed(2));
+              }
             }
           }
         }
 
         if (resultingRate !== null && !isNaN(resultingRate)) {
-          var baseLimit = 1.22; // Hardkódolt fix 1.22 bázis, ahogy kérted a jobb oldalra
+          var baseLimit = recommendationRate + 0.01; // Fix viszonyítási pont (ma 1.22)
           var baseFormatted = baseLimit.toFixed(2);
           var currentFormatted = resultingRate.toFixed(2);
 
