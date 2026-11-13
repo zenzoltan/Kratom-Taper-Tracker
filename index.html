@@ -362,7 +362,7 @@
       }
 
       function getRecommendationRate(dateStr) {
-        var baseDate = new Date(2026, 10, 13); // 2026. november 13.
+        var baseDate = new Date(2026, 10, 13); 
         var parts = (dateStr || '').split('-');
         if (parts.length === 3) {
           var curDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
@@ -828,26 +828,6 @@
         }
       }
 
-      function onWakeTimeChange() {
-        var sheetName = document.getElementById('sheetName').value;
-        var dateStr = document.getElementById('doseDate').value;
-        var wakeVal = document.getElementById('wakeTime').value.trim();
-
-        if (wakeVal && wakeVal.indexOf(':') === -1) return;
-
-        callApi({
-          action: 'saveWakeTime',
-          sheetName: sheetName,
-          dateStr: dateStr,
-          wakeTime: wakeVal
-        }, function(res) {
-          if (res && res.success) {
-            saveToLocalCache(sheetName, dateStr, res.stats);
-            renderAllStats(res.stats);
-          }
-        }, function(err) {});
-      }
-
       function autoSubmit() {
         if (isSaving) return;
 
@@ -878,12 +858,57 @@
           initialDelta = lastRawRecommendation - amountVal;
         }
 
+        // AZONNAL RÖGZÍTJÜK A LIVERATE PARAMÉTEREKET A MENTÉS PILLANATÁBAN, 
+        // ÍGY A PREVIEW SÁVBAN LÉVŐ MAGAS ÉRTÉK NEM UGORHAT VISSZA 1.21-RE!
+        var recommendationRate = getRecommendationRate(dateStr);
+        var targetLimit = recommendationRate + 0.01;
+        var lastIntHours = 0;
+        var curM = parseTimeToMinutes(time);
+        
+        var last = null;
+        if (currentStatsData && currentStatsData.lastDose) {
+           last = currentStatsData.lastDose;
+        }
+        
+        if (last && curM !== null) {
+           var lastM = parseTimeToMinutes(last.time);
+           if (lastM !== null) {
+               var d = curM - lastM;
+               if (d <= 0) d += 1440;
+               lastIntHours = d / 60;
+           }
+        }
+        
+        var prevDelta = 0;
+        var prevDoseNum = currentDoseIndex - 1;
+        if (prevDoseNum >= 1) {
+            var storedPrevDiff = localStorage.getItem('taper_diff_v5_' + sheetName + '_' + dateStr + '_' + prevDoseNum);
+            if (storedPrevDiff !== null) {
+                prevDelta = parseFloat(storedPrevDiff) || 0;
+            }
+        }
+        
+        var calcRate = recommendationRate;
+        if (lastIntHours > 0) {
+            var exactRec = prevDelta + (recommendationRate * lastIntHours);
+            if (amountVal > exactRec + 0.005) { 
+                calcRate = (amountVal - prevDelta) / lastIntHours;
+            }
+        }
+        
+        window.liveRateParams = {
+            lastIntHours: lastIntHours,
+            initialDelta: initialDelta,
+            recRate: recommendationRate,
+            baseRate: targetLimit,
+            startingHighRate: calcRate
+        };
+
         localStorage.setItem('taper_diff_v5_' + sheetName + '_' + dateStr + '_' + currentDoseIndex, initialDelta);
 
         isSaving = true;
         isUserModified = false;
         isManualTimeSet = false;
-        document.getElementById('livePreviewBox').style.display = 'none';
 
         if (currentStatsData && currentStatsData.allDoses) {
           var valid = [];
@@ -1495,7 +1520,6 @@
             
             var rateEl = document.getElementById('prevRateDisplay');
             var amountEl = document.getElementById('amount');
-            // Csak akkor mutatja ezt a hűlő értéket, ha negatív adósság van a mezőben
             if (rateEl && amountEl && amountEl.value.trim().startsWith('-')) {
                 var color = (displayRate > p.recRate + 0.005) ? '#ef5350' : '#81c784';
                 rateEl.innerHTML = `<span style="color: ${color};">${displayRate.toFixed(2)}</span> <span style="color: #666;">/</span> <span style="color: #888;">${p.baseRate.toFixed(2)} g/h</span>`;
