@@ -671,8 +671,8 @@
         var nextDoseNum = validDoses.length + 1;
         if (nextDoseNum > 8) return;
 
-        var recommendationRate = getRecommendationRate(dateVal); // Mától 1.21
-        var targetLimit = recommendationRate + 0.01; // Limit 1.22
+        var recommendationRate = getRecommendationRate(dateVal); 
+        var targetLimit = recommendationRate; 
 
         var curM = parseTimeToMinutes(currentTime);
         if (curM === null) return;
@@ -793,7 +793,7 @@
 
         if (resultingRate !== null && !isNaN(resultingRate)) {
           var recommendationRate = getRecommendationRate(dateVal);
-          var targetLimit = recommendationRate + 0.01;
+          var targetLimit = recommendationRate;
           var baseFormatted = targetLimit.toFixed(2);
           var currentFormatted = resultingRate.toFixed(2);
 
@@ -1252,7 +1252,7 @@
         var dateVal = document.getElementById('doseDate').value;
 
         var recommendationRate = getRecommendationRate(dateVal);
-        var targetLimit = recommendationRate + 0.01;
+        var targetLimit = recommendationRate;
 
         if (!last) {
           if (timeLabel) timeLabel.innerText = '';
