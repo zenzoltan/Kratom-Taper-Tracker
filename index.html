@@ -370,7 +370,6 @@
       window.liveRateParams = null; 
       window.currentTypingRate = null;
 
-      // 2 NAPONTA CSÖKKENŐ MAX (CAP) ÉRTÉK (Manuálisan felülbírálható bázissal)
       function getDoseCap(dateStr) {
         var sheetKey = document.getElementById('sheetName') ? document.getElementById('sheetName').value : 'Kori';
         var savedCustomCap = localStorage.getItem('taper_custom_cap_anchor_v1_' + sheetKey);
@@ -401,7 +400,6 @@
         return baseCap;
       }
 
-      // MANUÁLIS MAX (CAP) MENTÉSE A VALUES KÁRTYÁRÓL
       function onCustomCapCommit(el) {
         var val = getParsedAmount(el.value);
         var dateVal = document.getElementById('doseDate').value;
@@ -427,7 +425,6 @@
         }
       }
 
-      // 2 NAPONTA CSÖKKENŐ RÁTA (Alapértelmezetten 2026-11-18 = 1.19 g/h, vagy a manuálisan beállított bázis)
       function getRecommendationRate(dateStr) {
         var sheetKey = document.getElementById('sheetName') ? document.getElementById('sheetName').value : 'Kori';
         var savedCustom = localStorage.getItem('taper_custom_rate_anchor_v1_' + sheetKey);
@@ -458,7 +455,6 @@
         return baseRate;
       }
 
-      // MANUÁLIS RÁTA MENTÉSE A VALUES KÁRTYÁRÓL
       function onCustomRateCommit(el) {
         var val = getParsedAmount(el.value);
         var dateVal = document.getElementById('doseDate').value;
@@ -1034,7 +1030,11 @@
         var currentDoseIndex = validCount + 1;
 
         var initialDelta = 0;
-        if (currentDoseIndex > 1 && lastRawRecommendation !== null) {
+        if (currentDoseIndex === 1 && lastRawRecommendation !== null) {
+          if (amountVal < lastRawRecommendation) {
+            initialDelta = lastRawRecommendation - amountVal;
+          }
+        } else if (currentDoseIndex > 1 && lastRawRecommendation !== null) {
           initialDelta = lastRawRecommendation - amountVal;
         }
 
