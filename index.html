@@ -729,6 +729,13 @@
 
           <div class="stats-compare-box">
             <div class="compare-row">
+              <span class="compare-label">Daily</span>
+              <span class="compare-vals">
+                <span :style="{ color: comparisons.daily.dose.color }">{{ comparisons.daily.dose.text }}</span>
+                <span :style="{ color: comparisons.daily.rate.color }">{{ comparisons.daily.rate.text }}</span>
+              </span>
+            </div>
+            <div class="compare-row">
               <span class="compare-label">Weekly</span>
               <span class="compare-vals">
                 <span :style="{ color: comparisons.week.dose.color }">{{ comparisons.week.dose.text }}</span>
@@ -752,7 +759,6 @@
       const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwLunA0503U9F0PElqt4IXJ7e2OFIFURAZVApI8IUuVafVlDA65Ijk6zxcRORWC8X0/exec";
       const API_TIMEOUT_MS = 12000;
 
-      // Global error registry for inspection & auto-correction
       window.__DAILY_LOG_ERRORS__ = [];
       let globalErrorReporter = null;
 
@@ -797,7 +803,6 @@
           if (!parseJson) return raw;
           return JSON.parse(raw);
         } catch (err) {
-          // Auto-heal corrupted JSON key
           try { localStorage.removeItem(key); } catch (_) {}
           reportAppError('ERR_STORAGE_READ', `Corrupted storage key auto-cleared: ${key}`, { key }, err);
           return null;
@@ -1751,6 +1756,15 @@
             return { text: `${sign}${diff.toFixed(2)} ${unit}`, color };
           };
 
+          const calcDaily = () => {
+            const pts = fullHistoryPoints.value;
+            const todayPt = pts.find(p => p.date === getTodayDateStr());
+            const yestPt = pts.find(p => p.date === getDateStrOffset(1));
+            const doseDiff = (todayPt && yestPt) ? (todayPt.total - yestPt.total) : null;
+            const rateDiff = (todayPt && yestPt && todayPt.rate !== null && yestPt.rate !== null) ? (todayPt.rate - yestPt.rate) : null;
+            return { dose: formatDiffObj(doseDiff, 'g'), rate: formatDiffObj(rateDiff, 'g/h') };
+          };
+
           const calcPeriod = (windowDays) => {
             const pts = fullHistoryPoints.value;
             const todayStr = getTodayDateStr();
@@ -1782,6 +1796,7 @@
           };
 
           const comparisons = computed(() => ({
+            daily: calcDaily(),
             week: calcPeriod(7),
             month: calcPeriod(30)
           }));
