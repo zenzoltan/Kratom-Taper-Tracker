@@ -446,27 +446,12 @@
     </form>
 
     <div class="card">
-      <div class="card-header">
-        <span>Latest</span>
-      </div>
-      <div id="lastDoseStatsContent">
-        <div class="loading">Loading...</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <span>Values</span>
-      </div>
       <div id="summaryStatsContent">
         <div class="loading">Loading...</div>
       </div>
     </div>
 
     <div class="card">
-      <div class="card-header card-header-noborder">
-        <span>Entries</span>
-      </div>
       <div id="editableDosesContent">
         <div class="loading">Loading...</div>
       </div>
@@ -477,7 +462,7 @@
       <div class="modal-box">
         <div class="modal-header">
           <span class="modal-title">Settings</span>
-          <button type="button" class="modal-close" onclick="closeSettingsModal()">&times;</button>
+          <button type="button" class="modal-close" onclick="closeSettingsModal()">×</button>
         </div>
 
         <div class="modal-section">
@@ -1618,8 +1603,6 @@
         } catch(e) {}
 
         if (!hasCachedData) {
-          var lastDoseCard = document.getElementById('lastDoseStatsContent');
-          if (lastDoseCard) lastDoseCard.innerHTML = '<div class="loading">Loading...</div>';
           var summaryCard = document.getElementById('summaryStatsContent');
           if (summaryCard) summaryCard.innerHTML = '<div class="loading">Loading...</div>';
           var editCard = document.getElementById('editableDosesContent');
@@ -1634,8 +1617,6 @@
           if (!data || !data.found) {
             if (!hasCachedData) {
               currentStatsData = null;
-              var lastDoseCard = document.getElementById('lastDoseStatsContent');
-              if (lastDoseCard) lastDoseCard.innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">No previous dose.</div>';
               var summaryCard = document.getElementById('summaryStatsContent');
               if (summaryCard) summaryCard.innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">No entries for this day.</div>';
               var editCard = document.getElementById('editableDosesContent');
@@ -1648,8 +1629,6 @@
           renderAllStats(data);
         }, function(err) {
           if (!hasCachedData) {
-            var lastDoseCard = document.getElementById('lastDoseStatsContent');
-            if (lastDoseCard) lastDoseCard.innerHTML = '';
             var summaryCard = document.getElementById('summaryStatsContent');
             if (summaryCard) summaryCard.innerHTML = '<div style="color: #e57373; font-size: 12px; padding: 8px;">Error: ' + err.message + '</div>';
             var editCard = document.getElementById('editableDosesContent');
@@ -1661,7 +1640,6 @@
       function updateUpperCardsOnly(data) {
         currentStatsData = data;
         var last = data.lastDose;
-        var lastCard = document.getElementById('lastDoseStatsContent');
         var dateVal = document.getElementById('doseDate').value;
         var sheetKey = document.getElementById('sheetName').value;
 
@@ -1669,11 +1647,15 @@
         var currentCap = getDoseCap(dateVal);
         var targetLimit = recommendationRate + 0.01;
 
+        var elapsedHtml = '-';
+        var awakeHtml = '-';
+
         if (!last) {
-          if (lastCard) lastCard.innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">No doses logged today.</div>';
           lastRecordedTimeStr = null;
         } else {
           lastRecordedTimeStr = last.time;
+          elapsedHtml = 'Calculating...';
+          awakeHtml = cleanDisplay(last.awakeTime);
           
           var validDoses = data.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0);
           var savedDoseNum = validDoses.length;
@@ -1734,24 +1716,21 @@
                   startingHighRate: calcRate 
               };
           }
-
-          if (lastCard) {
-            lastCard.innerHTML = `
-              <div class="stat-row"><span class="stat-label">Elapsed</span><span id="liveElapsedDisplay" class="stat-value">Calculating...</span></div>
-              <div class="stat-row"><span class="stat-label">Awake</span><span class="stat-value">${cleanDisplay(last.awakeTime)}</span></div>
-            `;
-            updateLiveElapsedTime();
-          }
         }
 
         var summaryCard = document.getElementById('summaryStatsContent');
         if (summaryCard) {
           summaryCard.innerHTML = `
+            <div class="stat-row"><span class="stat-label">Elapsed</span><span id="liveElapsedDisplay" class="stat-value">${elapsedHtml}</span></div>
+            <div class="stat-row"><span class="stat-label">Awake</span><span class="stat-value">${awakeHtml}</span></div>
             <div class="stat-row"><span class="stat-label">Max</span><span class="stat-value">${currentCap.toFixed(2)} g</span></div>
             <div class="stat-row"><span class="stat-label">Total</span><span class="stat-value">${cleanDisplay(data.dailyTotal)}</span></div>
             <div class="stat-row"><span class="stat-label">Average</span><span class="stat-value">${cleanDisplay(data.avgDose)}</span></div>
             <div class="stat-row"><span class="stat-label">Interval</span><span class="stat-value">${cleanDisplay(data.avgInterval)}</span></div>
           `;
+          if (last) {
+            updateLiveElapsedTime();
+          }
         }
       }
 
