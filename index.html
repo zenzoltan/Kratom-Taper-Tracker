@@ -258,11 +258,11 @@
         outline: none;
       }
 
-      /* Settings Modal */
+      /* Modals */
       .modal-overlay {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.75);
+        background: rgba(0, 0, 0, 0.78);
         display: none;
         align-items: center;
         justify-content: center;
@@ -277,6 +277,9 @@
         width: 100%;
         max-width: 340px;
         box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
+      }
+      .modal-box-wide {
+        max-width: 420px;
       }
       .modal-header {
         display: flex;
@@ -362,6 +365,77 @@
       }
       .modal-save-btn:active {
         background: #333;
+      }
+      .modal-secondary-btn {
+        width: 100%;
+        margin-top: 8px;
+        padding: 10px;
+        background: #121212;
+        color: #64b5f6;
+        border: 1px solid #262626;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .modal-secondary-btn:active {
+        background: #1f1f1f;
+      }
+
+      /* Statistics Chart */
+      .range-tabs {
+        display: flex;
+        background: #121212;
+        border-radius: 8px;
+        padding: 3px;
+        gap: 3px;
+        margin-bottom: 12px;
+      }
+      .range-tab {
+        flex: 1;
+        padding: 6px 8px;
+        background: transparent;
+        color: #777;
+        border: none;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .range-tab.active {
+        background: #282828;
+        color: #fff;
+      }
+      .stats-summary-bar {
+        display: flex;
+        justify-content: space-between;
+        background: #121212;
+        border-radius: 8px;
+        padding: 8px 12px;
+        margin-bottom: 12px;
+        font-size: 12px;
+      }
+      .stats-summary-item span {
+        color: #777;
+        margin-right: 4px;
+      }
+      .stats-summary-item strong {
+        color: #fff;
+      }
+      .chart-container {
+        width: 100%;
+        height: 200px;
+        background: #121212;
+        border-radius: 10px;
+        padding: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .chart-empty {
+        color: #666;
+        font-size: 12px;
+        text-align: center;
       }
     </style>
   </head>
@@ -510,6 +584,33 @@
         </div>
 
         <button type="button" class="modal-save-btn" onclick="saveSettingsModal()">Save</button>
+        <button type="button" class="modal-secondary-btn" onclick="openStatsModal()">Statistics</button>
+      </div>
+    </div>
+
+    <!-- Statistics Modal -->
+    <div id="statsModal" class="modal-overlay" onclick="if(event.target===this) closeStatsModal();">
+      <div class="modal-box modal-box-wide">
+        <div class="modal-header">
+          <span class="modal-title">Statistics</span>
+          <button type="button" class="modal-close" onclick="closeStatsModal()">&times;</button>
+        </div>
+
+        <div class="range-tabs">
+          <button type="button" id="rangeBtn7" class="range-tab active" onclick="setStatsRange(7)">7 Days</button>
+          <button type="button" id="rangeBtn30" class="range-tab" onclick="setStatsRange(30)">1 Month</button>
+          <button type="button" id="rangeBtn90" class="range-tab" onclick="setStatsRange(90)">3 Months</button>
+        </div>
+
+        <div class="stats-summary-bar">
+          <div class="stats-summary-item"><span>Avg</span><strong id="statAvgVal">-</strong></div>
+          <div class="stats-summary-item"><span>Min</span><strong id="statMinVal">-</strong></div>
+          <div class="stats-summary-item"><span>Max</span><strong id="statMaxVal">-</strong></div>
+        </div>
+
+        <div id="statsChartContainer" class="chart-container">
+          <div class="chart-empty">Loading...</div>
+        </div>
       </div>
     </div>
 
@@ -522,9 +623,18 @@
       var isManualTimeSet = false;
       var activeDayType = 'Szabadnap';
       var lastRawRecommendation = null;
+      var activeStatsRange = 7;
       
       window.liveRateParams = null; 
       window.currentTypingRate = null;
+
+      function getTodayDateStr() {
+        var today = new Date();
+        var yyyy = today.getFullYear();
+        var mm = String(today.getMonth() + 1).padStart(2, '0');
+        var dd = String(today.getDate()).padStart(2, '0');
+        return yyyy + '-' + mm + '-' + dd;
+      }
 
       function getStepDays() {
         var sheetKey = document.getElementById('sheetName') ? document.getElementById('sheetName').value : 'Kori';
@@ -654,6 +764,203 @@
             onTimeOrAmountInput();
           }
         }
+      }
+
+      /* --- STATISTICS MODAL & LINE CHART --- */
+      function openStatsModal() {
+        closeSettingsModal();
+        document.getElementById('statsModal').style.display = 'flex';
+        setStatsRange(activeStatsRange);
+      }
+
+      function closeStatsModal() {
+        document.getElementById('statsModal').style.display = 'none';
+      }
+
+      function setStatsRange(days) {
+        activeStatsRange = days;
+        document.getElementById('rangeBtn7').className = 'range-tab' + (days === 7 ? ' active' : '');
+        document.getElementById('rangeBtn30').className = 'range-tab' + (days === 30 ? ' active' : '');
+        document.getElementById('rangeBtn90').className = 'range-tab' + (days === 90 ? ' active' : '');
+        loadHistoryAndRender(days);
+      }
+
+      function getLocalCachedHistory(sheetName, days) {
+        var todayStr = getTodayDateStr();
+        var cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - days);
+        var cutoffStr = cutoff.getFullYear() + '-' + String(cutoff.getMonth() + 1).padStart(2, '0') + '-' + String(cutoff.getDate()).padStart(2, '0');
+
+        var prefix = 'taper_fast_cache_v24_' + sheetName + '_';
+        var results = [];
+        for (var i = 0; i < localStorage.length; i++) {
+          var key = localStorage.key(i);
+          if (key && key.indexOf(prefix) === 0) {
+            var dStr = key.substring(prefix.length);
+            if (dStr < todayStr && dStr >= cutoffStr) {
+              try {
+                var parsed = JSON.parse(localStorage.getItem(key));
+                if (parsed && parsed.found && parsed.dailyTotal) {
+                  var tot = parseFloat(String(parsed.dailyTotal).replace(' g', '').replace(',', '.').trim());
+                  if (!isNaN(tot) && tot > 0) {
+                    results.push({ date: dStr, total: tot });
+                  }
+                }
+              } catch(e) {}
+            }
+          }
+        }
+        results.sort(function(a, b) { return a.date.localeCompare(b.date); });
+        return results;
+      }
+
+      function loadHistoryAndRender(days) {
+        var sheetName = document.getElementById('sheetName').value;
+        var todayStr = getTodayDateStr();
+        var container = document.getElementById('statsChartContainer');
+        
+        var localPoints = getLocalCachedHistory(sheetName, days);
+        if (localPoints.length > 0) {
+          renderLineChart(localPoints);
+        } else {
+          container.innerHTML = '<div class="chart-empty">Loading...</div>';
+        }
+
+        callApi({
+          action: 'getHistory',
+          sheetName: sheetName,
+          days: days
+        }, function(res) {
+          if (res && res.success && Array.isArray(res.history)) {
+            var filtered = res.history
+              .filter(function(item) {
+                return item.date && item.date < todayStr && parseFloat(item.total) > 0;
+              })
+              .map(function(item) {
+                return { date: item.date, total: parseFloat(item.total) };
+              })
+              .sort(function(a, b) { return a.date.localeCompare(b.date); });
+
+            if (filtered.length > 0) {
+              renderLineChart(filtered);
+              return;
+            }
+          }
+          if (localPoints.length === 0) {
+            renderLineChart([]);
+          }
+        }, function() {
+          if (localPoints.length === 0) {
+            renderLineChart([]);
+          }
+        });
+      }
+
+      function renderLineChart(points) {
+        var container = document.getElementById('statsChartContainer');
+        var avgEl = document.getElementById('statAvgVal');
+        var minEl = document.getElementById('statMinVal');
+        var maxEl = document.getElementById('statMaxVal');
+
+        if (!points || points.length === 0) {
+          avgEl.innerText = '-';
+          minEl.innerText = '-';
+          maxEl.innerText = '-';
+          container.innerHTML = '<div class="chart-empty">No completed days in this period.</div>';
+          return;
+        }
+
+        var vals = points.map(function(p) { return p.total; });
+        var sum = vals.reduce(function(a, b) { return a + b; }, 0);
+        var avg = sum / vals.length;
+        var minVal = Math.min.apply(null, vals);
+        var maxVal = Math.max.apply(null, vals);
+
+        avgEl.innerText = avg.toFixed(2) + ' g';
+        minEl.innerText = minVal.toFixed(2) + ' g';
+        maxEl.innerText = maxVal.toFixed(2) + ' g';
+
+        var W = 360;
+        var H = 180;
+        var padL = 36;
+        var padR = 12;
+        var padT = 14;
+        var padB = 24;
+        var plotW = W - padL - padR;
+        var plotH = H - padT - padB;
+
+        var yMin = minVal;
+        var yMax = maxVal;
+        if (yMax === yMin) {
+          yMin = Math.max(0, yMin - 1);
+          yMax = yMax + 1;
+        } else {
+          var margin = (yMax - yMin) * 0.12;
+          yMin = Math.max(0, yMin - margin);
+          yMax = yMax + margin;
+        }
+
+        function getX(idx) {
+          if (points.length === 1) return padL + plotW / 2;
+          return padL + (idx / (points.length - 1)) * plotW;
+        }
+        function getY(val) {
+          return padT + plotH - ((val - yMin) / (yMax - yMin)) * plotH;
+        }
+
+        var polyPoints = [];
+        var dotsHtml = '';
+        for (var i = 0; i < points.length; i++) {
+          var cx = getX(i).toFixed(1);
+          var cy = getY(points[i].total).toFixed(1);
+          polyPoints.push(cx + ',' + cy);
+          if (points.length <= 31) {
+            dotsHtml += `<circle cx="${cx}" cy="${cy}" r="2.8" fill="#64b5f6" />`;
+          }
+        }
+
+        var areaPoints = polyPoints.slice();
+        var lastX = getX(points.length - 1).toFixed(1);
+        var firstX = getX(0).toFixed(1);
+        var baseY = (padT + plotH).toFixed(1);
+        areaPoints.push(lastX + ',' + baseY);
+        areaPoints.push(firstX + ',' + baseY);
+
+        var midY = (padT + plotH / 2).toFixed(1);
+        var midVal = ((yMin + yMax) / 2).toFixed(1);
+
+        var firstDateLabel = points[0].date.substring(5);
+        var lastDateLabel = points[points.length - 1].date.substring(5);
+        var midDateLabel = points.length > 2 ? points[Math.floor(points.length / 2)].date.substring(5) : '';
+
+        var svg = `
+          <svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="lineAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#64b5f6" stop-opacity="0.28"/>
+                <stop offset="100%" stop-color="#64b5f6" stop-opacity="0.0"/>
+              </linearGradient>
+            </defs>
+
+            <line x1="${padL}" y1="${padT}" x2="${W - padR}" y2="${padT}" stroke="#222" stroke-width="1" />
+            <line x1="${padL}" y1="${midY}" x2="${W - padR}" y2="${midY}" stroke="#222" stroke-width="1" stroke-dasharray="3,3" />
+            <line x1="${padL}" y1="${baseY}" x2="${W - padR}" y2="${baseY}" stroke="#222" stroke-width="1" />
+
+            <text x="${padL - 5}" y="${padT + 4}" fill="#666" font-size="9" text-anchor="end">${yMax.toFixed(1)}</text>
+            <text x="${padL - 5}" y="${parseFloat(midY) + 3}" fill="#666" font-size="9" text-anchor="end">${midVal}</text>
+            <text x="${padL - 5}" y="${parseFloat(baseY) + 3}" fill="#666" font-size="9" text-anchor="end">${yMin.toFixed(1)}</text>
+
+            <text x="${padL}" y="${H - 6}" fill="#666" font-size="9" text-anchor="start">${firstDateLabel}</text>
+            ${midDateLabel ? `<text x="${(padL + plotW / 2).toFixed(1)}" y="${H - 6}" fill="#666" font-size="9" text-anchor="middle">${midDateLabel}</text>` : ''}
+            ${points.length > 1 ? `<text x="${W - padR}" y="${H - 6}" fill="#666" font-size="9" text-anchor="end">${lastDateLabel}</text>` : ''}
+
+            ${points.length > 1 ? `<polygon points="${areaPoints.join(' ')}" fill="url(#lineAreaGrad)" />` : ''}
+            ${points.length > 1 ? `<polyline points="${polyPoints.join(' ')}" fill="none" stroke="#64b5f6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />` : ''}
+            ${dotsHtml}
+          </svg>
+        `;
+
+        container.innerHTML = svg;
       }
 
       function buildSmartTimeDigits(rawVal) {
@@ -882,11 +1189,7 @@
 
       function resetDateTime() {
         var today = new Date();
-        var yyyy = today.getFullYear();
-        var mm = String(today.getMonth() + 1).padStart(2, '0');
-        var dd = String(today.getDate()).padStart(2, '0');
-        
-        document.getElementById('doseDate').value = yyyy + '-' + mm + '-' + dd;
+        document.getElementById('doseDate').value = getTodayDateStr();
         document.getElementById('time').value = today.toTimeString().substring(0, 5);
         isManualTimeSet = false;
       }
