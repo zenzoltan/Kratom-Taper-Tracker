@@ -469,7 +469,7 @@
           <span class="error-code">[{{ activeError.code }}]</span>
           <div class="error-actions">
             <button type="button" class="error-btn" @click="copyErrorReport">{{ copyFeedback || 'Copy' }}</button>
-            <button type="button" class="error-btn" @click="dismissError">&times;</button>
+            <button type="button" class="error-btn" @click="dismissError">×</button>
           </div>
         </div>
         <div class="error-msg-text">{{ activeError.message }}</div>
@@ -621,7 +621,7 @@
         <div class="modal-box">
           <div class="modal-header">
             <span class="modal-title">Settings</span>
-            <button type="button" class="modal-close" @click="showSettingsModal = false">&times;</button>
+            <button type="button" class="modal-close" @click="showSettingsModal = false">×</button>
           </div>
 
           <div class="modal-section">
@@ -679,7 +679,7 @@
         <div class="modal-box modal-box-wide">
           <div class="modal-header">
             <span class="modal-title">Statistics</span>
-            <button type="button" class="modal-close" @click="showStatsModal = false">&times;</button>
+            <button type="button" class="modal-close" @click="showStatsModal = false">×</button>
           </div>
 
           <div class="range-tabs">
@@ -910,7 +910,6 @@
         return (!isNaN(n) && n > 0) ? n : null;
       }
 
-      // Deterministic carryover delta from synced Google Sheets doses (identical across all devices)
       function computeCarryoverDelta(validDoses, cap, recRate) {
         if (!validDoses || validDoses.length === 0) return 0;
         let delta = 0;
@@ -932,55 +931,65 @@
         return delta;
       }
 
-      function callApi(params, onSuccess, onError) {
-        const callbackName = 'jsonp_cb_' + Math.round(1000000 * Math.random());
-        const script = document.createElement('script');
-        let settled = false;
+      // Fetch-based API call with timeout and 1 automatic retry
+      function callApi(params, onSuccess, onError, attempt = 1) {
+        const maxAttempts = 2;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
-        const cleanup = () => {
-          clearTimeout(timer);
-          delete window[callbackName];
-          if (script.parentNode) script.parentNode.removeChild(script);
-        };
+        const query = Object.keys(params)
+          .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
+          .join('&');
+        const url = `${APPS_SCRIPT_URL}?${query}&_ts=${Date.now()}`;
 
-        const fail = (code, msg) => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          const errEntry = reportAppError(code, msg, { action: params.action, params });
+        const retryOrFail = (code, msg, extraContext = {}, errObj = null) => {
+          if (attempt < maxAttempts) {
+            setTimeout(() => callApi(params, onSuccess, onError, attempt + 1), 800);
+            return;
+          }
+          const errEntry = reportAppError(code, msg, { action: params.action, params, attempt, ...extraContext }, errObj);
           if (onError) onError(errEntry);
         };
 
-        const timer = setTimeout(() => {
-          fail('ERR_TIMEOUT', `Server did not respond within ${API_TIMEOUT_MS / 1000}s (${params.action})`);
-        }, API_TIMEOUT_MS);
-
-        window[callbackName] = (data) => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          if (!data || typeof data !== 'object') {
-            const errEntry = reportAppError('ERR_INVALID_RESPONSE', `Invalid response payload (${params.action})`, { action: params.action, raw: data });
-            if (onError) onError(errEntry);
-            return;
-          }
-          if (data.success === false && data.error) {
-            const errEntry = reportAppError('ERR_API', data.error, { action: params.action, params });
-            if (onError) onError(errEntry);
-            return;
-          }
-          try {
-            onSuccess(data);
-          } catch (err) {
-            const errEntry = reportAppError('ERR_HANDLER', `Error processing response for ${params.action}: ${err.message}`, { action: params.action }, err);
-            if (onError) onError(errEntry);
-          }
-        };
-
-        const query = Object.keys(params).map(k => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`).join('&');
-        script.src = `${APPS_SCRIPT_URL}?${query}&callback=${callbackName}&_ts=${Date.now()}`;
-        script.onerror = () => fail('ERR_NETWORK', `Failed to reach Google Apps Script (${params.action})`);
-        document.body.appendChild(script);
+        fetch(url, { method: 'GET', redirect: 'follow', signal: controller.signal })
+          .then(async (res) => {
+            clearTimeout(timer);
+            if (!res.ok) {
+              retryOrFail('ERR_HTTP', `HTTP ${res.status} (${params.action})`, { status: res.status });
+              return;
+            }
+            const text = await res.text();
+            let data;
+            try {
+              data = JSON.parse(text);
+            } catch (parseErr) {
+              retryOrFail('ERR_INVALID_RESPONSE', `Non-JSON response (${params.action})`, { preview: text.slice(0, 120) }, parseErr);
+              return;
+            }
+            if (!data || typeof data !== 'object') {
+              retryOrFail('ERR_INVALID_RESPONSE', `Invalid response payload (${params.action})`, { raw: data });
+              return;
+            }
+            if (data.success === false && data.error) {
+              const errEntry = reportAppError('ERR_API', data.error, { action: params.action, params });
+              if (onError) onError(errEntry);
+              return;
+            }
+            try {
+              onSuccess(data);
+            } catch (err) {
+              const errEntry = reportAppError('ERR_HANDLER', `Error processing response for ${params.action}: ${err.message}`, { action: params.action }, err);
+              if (onError) onError(errEntry);
+            }
+          })
+          .catch((err) => {
+            clearTimeout(timer);
+            if (err && err.name === 'AbortError') {
+              retryOrFail('ERR_TIMEOUT', `Server did not respond within ${API_TIMEOUT_MS / 1000}s (${params.action})`);
+            } else {
+              retryOrFail('ERR_NETWORK', `Network error (${params.action}): ${err?.message || 'Failed to fetch'}`, {}, err);
+            }
+          });
       }
 
       const writeQueue = [];
