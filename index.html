@@ -19,7 +19,7 @@
       }
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        padding: 12px 16px 16px 16px;
+        padding: 16px;
         background: #121212;
         color: #e0e0e0;
         margin: 0;
@@ -28,18 +28,24 @@
         margin-right: auto;
         line-height: 1.4;
       }
-      .header-bar {
+      .top-row {
         display: flex;
-        justify-content: flex-end;
-        margin-bottom: 4px;
+        align-items: flex-end;
+        gap: 5px;
+        margin-bottom: 8px;
+      }
+      .form-group {
+        flex: 1;
+        min-width: 0;
       }
       .settings-btn {
         background: #1c1c1c;
         color: #888;
         border: none;
         border-radius: 8px;
-        width: 32px;
-        height: 32px;
+        width: 36px;
+        height: 36px;
+        flex-shrink: 0;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -50,14 +56,6 @@
       .settings-btn:active {
         background: #282828;
         color: #fff;
-      }
-      .top-row {
-        display: flex;
-        gap: 6px;
-        margin-bottom: 8px;
-      }
-      .form-group {
-        flex: 1;
       }
       label {
         display: block;
@@ -70,7 +68,8 @@
       }
       input, select {
         width: 100%;
-        padding: 9px 8px;
+        height: 36px;
+        padding: 0 6px;
         background: #1c1c1c;
         color: #fff;
         border: none;
@@ -80,6 +79,9 @@
       }
       input:focus, select:focus {
         outline: none;
+      }
+      .time-input {
+        text-align: center;
       }
 
       .day-type-container {
@@ -128,6 +130,7 @@
       .dose-input {
         width: 100%;
         max-width: 160px;
+        height: auto;
         padding: 10px;
         font-size: 32px;
         font-weight: 600;
@@ -246,6 +249,7 @@
       }
       .table-input {
         width: 100%;
+        height: auto;
         padding: 6px 4px;
         background: #121212;
         color: #fff;
@@ -316,6 +320,7 @@
       }
       .settings-slider {
         width: 100%;
+        height: auto;
         padding: 0;
         background: transparent;
         accent-color: #64b5f6;
@@ -339,6 +344,7 @@
       }
       .modal-num-input {
         width: 100%;
+        height: auto;
         background: #1c1c1c;
         color: #fff;
         font-size: 20px;
@@ -365,17 +371,8 @@
   </head>
   <body>
 
-    <div class="header-bar">
-      <button type="button" class="settings-btn" onclick="openSettingsModal()" aria-label="Settings">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3"></circle>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-        </svg>
-      </button>
-    </div>
-
     <div class="top-row">
-      <div class="form-group" style="max-width: 75px;">
+      <div class="form-group" style="flex: 0 0 62px;">
         <label for="sheetName">Profile</label>
         <select id="sheetName" onchange="onProfileChange()">
           <option value="Kori">Kori</option>
@@ -386,11 +383,12 @@
         <label for="doseDate">Date</label>
         <input type="date" id="doseDate" onchange="loadStats()" required>
       </div>
-      <div class="form-group" style="max-width: 82px;">
+      <div class="form-group" style="flex: 0 0 58px;">
         <label for="wakeTime">Wake</label>
         <input 
           type="text" 
           id="wakeTime" 
+          class="time-input"
           placeholder="07:00" 
           maxlength="5" 
           inputmode="numeric" 
@@ -400,11 +398,12 @@
           onblur="onWakeTimeBlur(this)"
         >
       </div>
-      <div class="form-group" style="max-width: 82px;">
+      <div class="form-group" style="flex: 0 0 58px;">
         <label for="time">Time</label>
         <input 
           type="text" 
           id="time" 
+          class="time-input"
           placeholder="08:20" 
           maxlength="5" 
           inputmode="numeric" 
@@ -415,6 +414,12 @@
           required
         >
       </div>
+      <button type="button" class="settings-btn" onclick="openSettingsModal()" aria-label="Settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
     </div>
 
     <div id="dayTypeContainer" class="day-type-container">
