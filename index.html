@@ -8,7 +8,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#121212">
-<link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="manifest.json">
+
     <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='120' fill='%23181818'/%3E%3Ccircle cx='256' cy='256' r='160' fill='none' stroke='%23333333' stroke-width='28'/%3E%3Ccircle cx='256' cy='256' r='160' fill='none' stroke='%234a90e2' stroke-width='28' stroke-dasharray='700' stroke-dashoffset='220' stroke-linecap='round'/%3E%3Ccircle cx='256' cy='256' r='36' fill='%23ffffff'/%3E%3C/svg%3E">
 
     <style>
@@ -18,7 +19,7 @@
       }
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        padding: 16px;
+        padding: 12px 16px 16px 16px;
         background: #121212;
         color: #e0e0e0;
         margin: 0;
@@ -26,6 +27,29 @@
         margin-left: auto;
         margin-right: auto;
         line-height: 1.4;
+      }
+      .header-bar {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 4px;
+      }
+      .settings-btn {
+        background: #1c1c1c;
+        color: #888;
+        border: none;
+        border-radius: 8px;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+        transition: color 0.15s, background 0.15s;
+      }
+      .settings-btn:active {
+        background: #282828;
+        color: #fff;
       }
       .top-row {
         display: flex;
@@ -234,29 +258,121 @@
         outline: none;
       }
 
-      .rate-edit-wrapper {
-        display: flex;
+      /* Settings Modal */
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.75);
+        display: none;
         align-items: center;
-        gap: 4px;
+        justify-content: center;
+        z-index: 1000;
+        padding: 16px;
       }
-      .rate-inline-input {
-        width: 58px;
-        padding: 3px 6px;
-        background: #121212;
-        color: #64b5f6;
-        border: 1px solid #2a2a2a;
-        border-radius: 6px;
-        font-size: 13px;
+      .modal-box {
+        background: #181818;
+        border: 1px solid #282828;
+        border-radius: 14px;
+        padding: 18px;
+        width: 100%;
+        max-width: 340px;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
+      }
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+      .modal-title {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.7px;
         font-weight: 700;
-        text-align: right;
+        color: #aaa;
       }
-      .rate-inline-input:focus {
-        border-color: #64b5f6;
-        outline: none;
+      .modal-close {
+        background: transparent;
+        border: none;
+        color: #777;
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 2px 6px;
+      }
+      .modal-section {
+        margin-bottom: 16px;
+      }
+      .slider-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      .slider-value {
+        font-size: 14px;
+        font-weight: 700;
+        color: #64b5f6;
+      }
+      .settings-slider {
+        width: 100%;
+        padding: 0;
+        background: transparent;
+        accent-color: #64b5f6;
+        cursor: pointer;
+      }
+      .modal-inputs-row {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      .modal-input-block {
+        flex: 1;
+        background: #121212;
+        border-radius: 10px;
+        padding: 10px;
+        text-align: center;
+      }
+      .modal-input-block label {
+        margin-bottom: 6px;
+        text-align: center;
+      }
+      .modal-num-input {
+        width: 100%;
+        background: #1c1c1c;
+        color: #fff;
+        font-size: 20px;
+        font-weight: 600;
+        text-align: center;
+        padding: 8px 6px;
+        border-radius: 8px;
+      }
+      .modal-save-btn {
+        width: 100%;
+        padding: 10px;
+        background: #282828;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .modal-save-btn:active {
+        background: #333;
       }
     </style>
   </head>
   <body>
+
+    <div class="header-bar">
+      <button type="button" class="settings-btn" onclick="openSettingsModal()" aria-label="Settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+      </button>
+    </div>
 
     <div class="top-row">
       <div class="form-group" style="max-width: 75px;">
@@ -357,6 +473,62 @@
       </div>
     </div>
 
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal-overlay" onclick="if(event.target===this) closeSettingsModal();">
+      <div class="modal-box">
+        <div class="modal-header">
+          <span class="modal-title">Settings</span>
+          <button type="button" class="modal-close" onclick="closeSettingsModal()">×</button>
+        </div>
+
+        <div class="modal-section">
+          <div class="slider-header">
+            <label for="settingsDaysSlider" style="margin: 0;">Step every</label>
+            <span class="slider-value"><span id="settingsDaysVal">2</span> days</span>
+          </div>
+          <input 
+            type="range" 
+            id="settingsDaysSlider" 
+            class="settings-slider" 
+            min="1" 
+            max="10" 
+            step="1" 
+            value="2"
+            oninput="onSettingsSliderInput(this)"
+          >
+        </div>
+
+        <div class="modal-inputs-row">
+          <div class="modal-input-block">
+            <label for="settingsMaxInput">Max (g)</label>
+            <input 
+              type="text" 
+              id="settingsMaxInput" 
+              class="modal-num-input" 
+              inputmode="numeric" 
+              enterkeyhint="done"
+              oninput="formatAmountInput(this)"
+              onkeydown="if(event.key==='Enter'){event.preventDefault(); saveSettingsModal();}"
+            >
+          </div>
+          <div class="modal-input-block">
+            <label for="settingsRateInput">Rate (g/h)</label>
+            <input 
+              type="text" 
+              id="settingsRateInput" 
+              class="modal-num-input" 
+              inputmode="numeric" 
+              enterkeyhint="done"
+              oninput="formatAmountInput(this)"
+              onkeydown="if(event.key==='Enter'){event.preventDefault(); saveSettingsModal();}"
+            >
+          </div>
+        </div>
+
+        <button type="button" class="modal-save-btn" onclick="saveSettingsModal()">Save</button>
+      </div>
+    </div>
+
     <script>
       const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwFDRlpzZi6cft3-fISblu1NlAQNby_TL7BZVHkKxeIr44YKauU2bU6nfqWkmd_O8c/exec";
       var isSaving = false;
@@ -370,9 +542,18 @@
       window.liveRateParams = null; 
       window.currentTypingRate = null;
 
+      function getStepDays() {
+        var sheetKey = document.getElementById('sheetName') ? document.getElementById('sheetName').value : 'Kori';
+        var saved = localStorage.getItem('taper_step_days_v1_' + sheetKey);
+        var days = parseInt(saved, 10);
+        if (isNaN(days) || days < 1 || days > 10) return 2;
+        return days;
+      }
+
       function getDoseCap(dateStr) {
         var sheetKey = document.getElementById('sheetName') ? document.getElementById('sheetName').value : 'Kori';
         var savedCustomCap = localStorage.getItem('taper_custom_cap_anchor_v1_' + sheetKey);
+        var stepDays = getStepDays();
 
         var baseDate = new Date(2026, 10, 10);
         var baseCap = 3.67;
@@ -394,40 +575,16 @@
         if (parts.length === 3) {
           var cur = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
           var diffDays = Math.floor((cur.getTime() - baseDate.getTime()) / (1000 * 60 * 60 * 24));
-          var steps = Math.floor(diffDays / 2);
+          var steps = Math.floor(diffDays / stepDays);
           return Math.max(0.1, parseFloat((baseCap - (steps * 0.01)).toFixed(2)));
         }
         return baseCap;
       }
 
-      function onCustomCapCommit(el) {
-        var val = getParsedAmount(el.value);
-        var dateVal = document.getElementById('doseDate').value;
-        var sheetKey = document.getElementById('sheetName').value;
-        if (val <= 0) {
-          el.value = getDoseCap(dateVal).toFixed(2);
-          return;
-        }
-        var roundedVal = parseFloat(val.toFixed(2));
-        localStorage.setItem('taper_custom_cap_anchor_v1_' + sheetKey, JSON.stringify({
-          dateStr: dateVal,
-          cap: roundedVal
-        }));
-        el.value = roundedVal.toFixed(2);
-
-        if (currentStatsData) {
-          updateUpperCardsOnly(currentStatsData);
-          if (!isUserModified) {
-            applyDoseRecommendation(currentStatsData);
-          } else {
-            onTimeOrAmountInput();
-          }
-        }
-      }
-
       function getRecommendationRate(dateStr) {
         var sheetKey = document.getElementById('sheetName') ? document.getElementById('sheetName').value : 'Kori';
         var savedCustom = localStorage.getItem('taper_custom_rate_anchor_v1_' + sheetKey);
+        var stepDays = getStepDays();
         
         var baseDate = new Date(2026, 10, 18);
         var baseRate = 1.19;
@@ -449,28 +606,62 @@
         if (parts.length === 3) {
           var curDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
           var diffDays = Math.floor((curDate.getTime() - baseDate.getTime()) / (1000 * 60 * 60 * 24));
-          var steps = Math.floor(diffDays / 2);
+          var steps = Math.floor(diffDays / stepDays);
           return Math.max(0.1, parseFloat((baseRate - (steps * 0.01)).toFixed(2)));
         }
         return baseRate;
       }
 
-      function onCustomRateCommit(el) {
-        var val = getParsedAmount(el.value);
+      function openSettingsModal() {
         var dateVal = document.getElementById('doseDate').value;
+        var days = getStepDays();
+        document.getElementById('settingsDaysSlider').value = days;
+        document.getElementById('settingsDaysVal').innerText = days;
+        document.getElementById('settingsMaxInput').value = getDoseCap(dateVal).toFixed(2);
+        document.getElementById('settingsRateInput').value = getRecommendationRate(dateVal).toFixed(2);
+        document.getElementById('settingsModal').style.display = 'flex';
+      }
+
+      function closeSettingsModal() {
+        document.getElementById('settingsModal').style.display = 'none';
+      }
+
+      function onSettingsSliderInput(el) {
+        var val = Math.round(parseInt(el.value, 10));
+        if (isNaN(val) || val < 1) val = 1;
+        if (val > 10) val = 10;
+        el.value = val;
+        document.getElementById('settingsDaysVal').innerText = val;
+      }
+
+      function saveSettingsModal() {
         var sheetKey = document.getElementById('sheetName').value;
-        if (val <= 0) {
-          el.value = getRecommendationRate(dateVal).toFixed(2);
-          return;
+        var dateVal = document.getElementById('doseDate').value;
+
+        var days = Math.round(parseInt(document.getElementById('settingsDaysSlider').value, 10));
+        if (isNaN(days) || days < 1) days = 1;
+        if (days > 10) days = 10;
+        localStorage.setItem('taper_step_days_v1_' + sheetKey, String(days));
+
+        var maxVal = getParsedAmount(document.getElementById('settingsMaxInput').value);
+        if (maxVal > 0) {
+          localStorage.setItem('taper_custom_cap_anchor_v1_' + sheetKey, JSON.stringify({
+            dateStr: dateVal,
+            cap: parseFloat(maxVal.toFixed(2))
+          }));
         }
-        var roundedVal = parseFloat(val.toFixed(2));
-        localStorage.setItem('taper_custom_rate_anchor_v1_' + sheetKey, JSON.stringify({
-          dateStr: dateVal,
-          rate: roundedVal
-        }));
-        el.value = roundedVal.toFixed(2);
+
+        var rateVal = getParsedAmount(document.getElementById('settingsRateInput').value);
+        if (rateVal > 0) {
+          localStorage.setItem('taper_custom_rate_anchor_v1_' + sheetKey, JSON.stringify({
+            dateStr: dateVal,
+            rate: parseFloat(rateVal.toFixed(2))
+          }));
+        }
 
         window.liveRateParams = null;
+        closeSettingsModal();
+
         if (currentStatsData) {
           updateUpperCardsOnly(currentStatsData);
           if (!isUserModified) {
@@ -1562,47 +1753,11 @@
           }
         }
 
-        if (document.activeElement && (document.activeElement.id === 'customRateInput' || document.activeElement.id === 'customCapInput')) {
-          return;
-        }
-
         var summaryCard = document.getElementById('summaryStatsContent');
         if (summaryCard) {
           summaryCard.innerHTML = `
-            <div class="stat-row">
-              <span class="stat-label">Rate</span>
-              <span class="rate-edit-wrapper">
-                <input 
-                  type="text" 
-                  id="customRateInput" 
-                  class="rate-inline-input" 
-                  inputmode="numeric" 
-                  enterkeyhint="done"
-                  value="${recommendationRate.toFixed(2)}" 
-                  oninput="formatAmountInput(this)" 
-                  onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" 
-                  onblur="onCustomRateCommit(this)"
-                >
-                <span class="stat-value" style="font-size: 12px; color: #888;">g/h</span>
-              </span>
-            </div>
-            <div class="stat-row">
-              <span class="stat-label">Max</span>
-              <span class="rate-edit-wrapper">
-                <input 
-                  type="text" 
-                  id="customCapInput" 
-                  class="rate-inline-input" 
-                  inputmode="numeric" 
-                  enterkeyhint="done"
-                  value="${currentCap.toFixed(2)}" 
-                  oninput="formatAmountInput(this)" 
-                  onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" 
-                  onblur="onCustomCapCommit(this)"
-                >
-                <span class="stat-value" style="font-size: 12px; color: #888;">g</span>
-              </span>
-            </div>
+            <div class="stat-row"><span class="stat-label">Rate</span><span class="stat-value">${recommendationRate.toFixed(2)} g/h</span></div>
+            <div class="stat-row"><span class="stat-label">Max</span><span class="stat-value">${currentCap.toFixed(2)} g</span></div>
             <div class="stat-row"><span class="stat-label">Total</span><span class="stat-value">${cleanDisplay(data.dailyTotal)}</span></div>
             <div class="stat-row"><span class="stat-label">Average</span><span class="stat-value">${cleanDisplay(data.avgDose)}</span></div>
             <div class="stat-row"><span class="stat-label">Count</span><span class="stat-value">${data.totalDoses}</span></div>
@@ -1738,6 +1893,7 @@
             }
         }
       }
+
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./sw.js');
       }
