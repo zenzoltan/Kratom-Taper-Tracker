@@ -352,6 +352,21 @@
         padding: 8px 6px;
         border-radius: 8px;
       }
+      .modal-secondary-btn {
+        width: 100%;
+        margin-bottom: 8px;
+        padding: 10px;
+        background: #121212;
+        color: #64b5f6;
+        border: 1px solid #262626;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .modal-secondary-btn:active {
+        background: #1f1f1f;
+      }
       .modal-save-btn {
         width: 100%;
         padding: 10px;
@@ -365,21 +380,6 @@
       }
       .modal-save-btn:active {
         background: #333;
-      }
-      .modal-secondary-btn {
-        width: 100%;
-        margin-top: 8px;
-        padding: 10px;
-        background: #121212;
-        color: #64b5f6;
-        border: 1px solid #262626;
-        border-radius: 8px;
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
-      }
-      .modal-secondary-btn:active {
-        background: #1f1f1f;
       }
 
       /* Statistics Chart */
@@ -412,7 +412,7 @@
         background: #121212;
         border-radius: 8px;
         padding: 8px 12px;
-        margin-bottom: 12px;
+        margin-bottom: 10px;
         font-size: 12px;
       }
       .stats-summary-item span {
@@ -424,18 +424,43 @@
       }
       .chart-container {
         width: 100%;
-        height: 200px;
+        height: 190px;
         background: #121212;
         border-radius: 10px;
         padding: 8px;
         display: flex;
         align-items: center;
         justify-content: center;
+        margin-bottom: 10px;
       }
       .chart-empty {
         color: #666;
         font-size: 12px;
         text-align: center;
+      }
+      .stats-compare-box {
+        background: #121212;
+        border-radius: 10px;
+        padding: 8px 12px;
+      }
+      .compare-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 5px 0;
+        border-bottom: 1px solid #1e1e1e;
+        font-size: 12px;
+      }
+      .compare-row:last-child {
+        border-bottom: none;
+      }
+      .compare-label {
+        color: #888;
+      }
+      .compare-vals {
+        display: flex;
+        gap: 10px;
+        font-weight: 600;
       }
     </style>
   </head>
@@ -583,8 +608,8 @@
           </div>
         </div>
 
-        <button type="button" class="modal-save-btn" onclick="saveSettingsModal()">Save</button>
         <button type="button" class="modal-secondary-btn" onclick="openStatsModal()">Statistics</button>
+        <button type="button" class="modal-save-btn" onclick="saveSettingsModal()">Save</button>
       </div>
     </div>
 
@@ -611,6 +636,23 @@
         <div id="statsChartContainer" class="chart-container">
           <div class="chart-empty">Loading...</div>
         </div>
+
+        <div class="stats-compare-box">
+          <div class="compare-row">
+            <span class="compare-label">7d vs prev 7d</span>
+            <span class="compare-vals">
+              <span id="cmpWeekDose">-</span>
+              <span id="cmpWeekRate">-</span>
+            </span>
+          </div>
+          <div class="compare-row">
+            <span class="compare-label">30d vs prev 30d</span>
+            <span class="compare-vals">
+              <span id="cmpMonthDose">-</span>
+              <span id="cmpMonthRate">-</span>
+            </span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -624,6 +666,7 @@
       var activeDayType = 'Szabadnap';
       var lastRawRecommendation = null;
       var activeStatsRange = 7;
+      var fullHistoryPoints = [];
       
       window.liveRateParams = null; 
       window.currentTypingRate = null;
@@ -633,6 +676,15 @@
         var yyyy = today.getFullYear();
         var mm = String(today.getMonth() + 1).padStart(2, '0');
         var dd = String(today.getDate()).padStart(2, '0');
+        return yyyy + '-' + mm + '-' + dd;
+      }
+
+      function getDateStrOffset(daysAgo) {
+        var d = new Date();
+        d.setDate(d.getDate() - daysAgo);
+        var yyyy = d.getFullYear();
+        var mm = String(d.getMonth() + 1).padStart(2, '0');
+        var dd = String(d.getDate()).padStart(2, '0');
         return yyyy + '-' + mm + '-' + dd;
       }
 
@@ -770,7 +822,7 @@
       function openStatsModal() {
         closeSettingsModal();
         document.getElementById('statsModal').style.display = 'flex';
-        setStatsRange(activeStatsRange);
+        fetchFullHistoryAndRender();
       }
 
       function closeStatsModal() {
@@ -782,28 +834,75 @@
         document.getElementById('rangeBtn7').className = 'range-tab' + (days === 7 ? ' active' : '');
         document.getElementById('rangeBtn30').className = 'range-tab' + (days === 30 ? ' active' : '');
         document.getElementById('rangeBtn90').className = 'range-tab' + (days === 90 ? ' active' : '');
-        loadHistoryAndRender(days);
+        renderStatsForRange(days);
       }
 
-      function getLocalCachedHistory(sheetName, days) {
-        var todayStr = getTodayDateStr();
-        var cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - days);
-        var cutoffStr = cutoff.getFullYear() + '-' + String(cutoff.getMonth() + 1).padStart(2, '0') + '-' + String(cutoff.getDate()).padStart(2, '0');
+      function parseRateNumber(raw) {
+        if (raw === null || raw === undefined) return null;
+        var s = String(raw).replace(/,/g, '.').replace(/[^0-9.]/g, '');
+        var n = parseFloat(s);
+        return (!isNaN(n) && n > 0) ? n : null;
+      }
 
+      function computeDayRateFromCache(parsed) {
+        if (!parsed) return null;
+        var direct = parseRateNumber(parsed.dailyRate || parsed.avgRate || (parsed.lastDose && parsed.lastDose.rate));
+        if (direct) return direct;
+        if (parsed.allDoses && parsed.allDoses.length > 1) {
+          var valid = parsed.allDoses.filter(function(d) {
+            return d.hasData && getParsedAmount(d.amount) > 0 && d.time;
+          });
+          if (valid.length >= 2) {
+            var firstM = parseTimeToMinutes(valid[0].time);
+            var lastM = parseTimeToMinutes(valid[valid.length - 1].time);
+            if (firstM !== null && lastM !== null) {
+              var diffM = lastM - firstM;
+              if (diffM <= 0) diffM += 1440;
+              if (diffM > 0) {
+                var sumAfterFirst = 0;
+                for (var i = 1; i < valid.length; i++) {
+                  sumAfterFirst += getParsedAmount(valid[i].amount);
+                }
+                return sumAfterFirst / (diffM / 60);
+              }
+            }
+          }
+        }
+        return null;
+      }
+
+      function getLocalCachedHistory(sheetName) {
+        var todayStr = getTodayDateStr();
+        var cutoffStr = getDateStrOffset(95);
         var prefix = 'taper_fast_cache_v24_' + sheetName + '_';
         var results = [];
+
         for (var i = 0; i < localStorage.length; i++) {
           var key = localStorage.key(i);
           if (key && key.indexOf(prefix) === 0) {
             var dStr = key.substring(prefix.length);
-            if (dStr < todayStr && dStr >= cutoffStr) {
+            if (dStr <= todayStr && dStr >= cutoffStr) {
               try {
                 var parsed = JSON.parse(localStorage.getItem(key));
                 if (parsed && parsed.found && parsed.dailyTotal) {
                   var tot = parseFloat(String(parsed.dailyTotal).replace(' g', '').replace(',', '.').trim());
+                  var doseCount = 0;
+                  if (parsed.allDoses) {
+                    doseCount = parsed.allDoses.filter(function(d) {
+                      return d.hasData && getParsedAmount(d.amount) > 0;
+                    }).length;
+                  } else if (parsed.totalDoses) {
+                    doseCount = parseInt(parsed.totalDoses, 10) || 0;
+                  }
+
+                  if (dStr === todayStr && doseCount < 6) continue;
                   if (!isNaN(tot) && tot > 0) {
-                    results.push({ date: dStr, total: tot });
+                    results.push({
+                      date: dStr,
+                      total: tot,
+                      rate: computeDayRateFromCache(parsed),
+                      count: doseCount
+                    });
                   }
                 }
               } catch(e) {}
@@ -814,14 +913,15 @@
         return results;
       }
 
-      function loadHistoryAndRender(days) {
+      function fetchFullHistoryAndRender() {
         var sheetName = document.getElementById('sheetName').value;
         var todayStr = getTodayDateStr();
         var container = document.getElementById('statsChartContainer');
-        
-        var localPoints = getLocalCachedHistory(sheetName, days);
-        if (localPoints.length > 0) {
-          renderLineChart(localPoints);
+
+        fullHistoryPoints = getLocalCachedHistory(sheetName);
+        if (fullHistoryPoints.length > 0) {
+          setStatsRange(activeStatsRange);
+          renderComparisons(fullHistoryPoints);
         } else {
           container.innerHTML = '<div class="chart-empty">Loading...</div>';
         }
@@ -829,31 +929,101 @@
         callApi({
           action: 'getHistory',
           sheetName: sheetName,
-          days: days
+          days: 90
         }, function(res) {
           if (res && res.success && Array.isArray(res.history)) {
             var filtered = res.history
               .filter(function(item) {
-                return item.date && item.date < todayStr && parseFloat(item.total) > 0;
+                if (!item.date || item.date > todayStr) return false;
+                var tot = parseFloat(item.total);
+                if (isNaN(tot) || tot <= 0) return false;
+                var cnt = parseInt(item.count, 10) || 0;
+                if (item.date === todayStr && cnt < 6) return false;
+                return true;
               })
               .map(function(item) {
-                return { date: item.date, total: parseFloat(item.total) };
+                return {
+                  date: item.date,
+                  total: parseFloat(item.total),
+                  rate: parseRateNumber(item.rate),
+                  count: parseInt(item.count, 10) || 0
+                };
               })
               .sort(function(a, b) { return a.date.localeCompare(b.date); });
 
             if (filtered.length > 0) {
-              renderLineChart(filtered);
+              fullHistoryPoints = filtered;
+              setStatsRange(activeStatsRange);
+              renderComparisons(fullHistoryPoints);
               return;
             }
           }
-          if (localPoints.length === 0) {
+          if (fullHistoryPoints.length === 0) {
             renderLineChart([]);
+            renderComparisons([]);
           }
         }, function() {
-          if (localPoints.length === 0) {
+          if (fullHistoryPoints.length === 0) {
             renderLineChart([]);
+            renderComparisons([]);
           }
         });
+      }
+
+      function renderStatsForRange(days) {
+        var cutoffStr = getDateStrOffset(days);
+        var slice = fullHistoryPoints.filter(function(p) {
+          return p.date >= cutoffStr;
+        });
+        renderLineChart(slice);
+      }
+
+      function formatDiffHtml(diff, unit) {
+        if (diff === null || isNaN(diff)) return '<span style="color:#666;">-</span>';
+        var sign = diff > 0 ? '+' : '';
+        var color = diff > 0.005 ? '#ef5350' : (diff < -0.005 ? '#81c784' : '#aaa');
+        return `<span style="color:${color};">${sign}${diff.toFixed(2)} ${unit}</span>`;
+      }
+
+      function calcPeriodComparison(points, windowDays) {
+        var todayStr = getTodayDateStr();
+        var hasToday = points.some(function(p) { return p.date === todayStr; });
+        var curEndOffset = hasToday ? 0 : 1;
+        var curStartStr = getDateStrOffset(curEndOffset + windowDays - 1);
+        var curEndStr = getDateStrOffset(curEndOffset);
+        var prevStartStr = getDateStrOffset(curEndOffset + windowDays * 2 - 1);
+        var prevEndStr = getDateStrOffset(curEndOffset + windowDays);
+
+        var curPts = points.filter(function(p) { return p.date >= curStartStr && p.date <= curEndStr; });
+        var prevPts = points.filter(function(p) { return p.date >= prevStartStr && p.date <= prevEndStr; });
+
+        var doseDiff = null;
+        if (curPts.length > 0 && prevPts.length > 0) {
+          var curAvg = curPts.reduce(function(s, p) { return s + p.total; }, 0) / curPts.length;
+          var prevAvg = prevPts.reduce(function(s, p) { return s + p.total; }, 0) / prevPts.length;
+          doseDiff = curAvg - prevAvg;
+        }
+
+        var curRates = curPts.filter(function(p) { return p.rate !== null; });
+        var prevRates = prevPts.filter(function(p) { return p.rate !== null; });
+        var rateDiff = null;
+        if (curRates.length > 0 && prevRates.length > 0) {
+          var curRateAvg = curRates.reduce(function(s, p) { return s + p.rate; }, 0) / curRates.length;
+          var prevRateAvg = prevRates.reduce(function(s, p) { return s + p.rate; }, 0) / prevRates.length;
+          rateDiff = curRateAvg - prevRateAvg;
+        }
+
+        return { doseDiff: doseDiff, rateDiff: rateDiff };
+      }
+
+      function renderComparisons(points) {
+        var week = calcPeriodComparison(points, 7);
+        var month = calcPeriodComparison(points, 30);
+
+        document.getElementById('cmpWeekDose').innerHTML = formatDiffHtml(week.doseDiff, 'g');
+        document.getElementById('cmpWeekRate').innerHTML = formatDiffHtml(week.rateDiff, 'g/h');
+        document.getElementById('cmpMonthDose').innerHTML = formatDiffHtml(month.doseDiff, 'g');
+        document.getElementById('cmpMonthRate').innerHTML = formatDiffHtml(month.rateDiff, 'g/h');
       }
 
       function renderLineChart(points) {
@@ -881,7 +1051,7 @@
         maxEl.innerText = maxVal.toFixed(2) + ' g';
 
         var W = 360;
-        var H = 180;
+        var H = 174;
         var padL = 36;
         var padR = 12;
         var padT = 14;
