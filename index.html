@@ -931,7 +931,6 @@
         return delta;
       }
 
-      // Fetch-based API call with timeout and 1 automatic retry
       function callApi(params, onSuccess, onError, attempt = 1) {
         const maxAttempts = 2;
         const controller = new AbortController();
@@ -1667,6 +1666,15 @@
             return dayStats.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length;
           };
 
+          const isValidCompletedPrevDay = (dayStats, targetDateStr) => {
+            if (!dayStats || !dayStats.found) return false;
+            const cnt = getValidDoseCount(dayStats);
+            const tot = parseFloat(String(dayStats.dailyTotal || '0').replace(' g', '').replace(',', '.').trim()) || 0;
+            if (cnt < 6 || tot <= 0) return false;
+            if (targetDateStr <= '2026-11-22' && tot < 13) return false;
+            return true;
+          };
+
           const getLocalCachedHistory = () => {
             const todayStr = getTodayDateStr();
             const cutoffStr = getDateStrOffset(95);
@@ -1703,13 +1711,15 @@
 
           const fetchPrevDayForComparison = (targetDateStr, onDone) => {
             const cached = safeStorageGet(`taper_fast_cache_v24_${sheetName.value}_${targetDateStr}`, true);
-            if (cached && cached.found && getValidDoseCount(cached) > 0) {
+            if (isValidCompletedPrevDay(cached, targetDateStr)) {
               prevDayStats.value = cached;
             }
             callApi({ action: 'getStats', sheetName: sheetName.value, dateStr: targetDateStr }, (data) => {
-              if (data && data.found && getValidDoseCount(data) > 0) {
-                prevDayStats.value = data;
+              if (data && data.found) {
                 saveToLocalCache(sheetName.value, targetDateStr, data);
+                if (isValidCompletedPrevDay(data, targetDateStr)) {
+                  prevDayStats.value = data;
+                }
               }
               if (onDone) onDone(data);
             }, () => {
@@ -1768,10 +1778,8 @@
 
                 if (filtered.length > 0) {
                   fullHistoryPoints.value = filtered;
-                  const tCount = getValidDoseCount(todayDayStats.value);
-                  const neededPrevCount = tCount >= 6 ? 1 : Math.max(1, tCount);
-                  if (getValidDoseCount(prevDayStats.value) < neededPrevCount) {
-                    const prevDays = filtered.filter(p => p.date < todayStr && p.count >= neededPrevCount);
+                  if (!prevDayStats.value) {
+                    const prevDays = filtered.filter(p => p.date < todayStr && p.count >= 6);
                     const fallbackDay = prevDays.length > 0 ? prevDays[prevDays.length - 1] : filtered.filter(p => p.date < todayStr).pop();
                     if (fallbackDay && fallbackDay.date !== yestStr) {
                       dailyCompareLoading.value = true;
