@@ -469,7 +469,7 @@
           <span class="error-code">[{{ activeError.code }}]</span>
           <div class="error-actions">
             <button type="button" class="error-btn" @click="copyErrorReport">{{ copyFeedback || 'Copy' }}</button>
-            <button type="button" class="error-btn" @click="dismissError">×</button>
+            <button type="button" class="error-btn" @click="dismissError">&times;</button>
           </div>
         </div>
         <div class="error-msg-text">{{ activeError.message }}</div>
@@ -621,7 +621,7 @@
         <div class="modal-box">
           <div class="modal-header">
             <span class="modal-title">Settings</span>
-            <button type="button" class="modal-close" @click="showSettingsModal = false">×</button>
+            <button type="button" class="modal-close" @click="showSettingsModal = false">&times;</button>
           </div>
 
           <div class="modal-section">
@@ -679,7 +679,7 @@
         <div class="modal-box modal-box-wide">
           <div class="modal-header">
             <span class="modal-title">Statistics</span>
-            <button type="button" class="modal-close" @click="showStatsModal = false">×</button>
+            <button type="button" class="modal-close" @click="showStatsModal = false">&times;</button>
           </div>
 
           <div class="range-tabs">
@@ -761,6 +761,7 @@
       const { createApp, ref, reactive, computed, onMounted } = Vue;
       const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwLunA0503U9F0PElqt4IXJ7e2OFIFURAZVApI8IUuVafVlDA65Ijk6zxcRORWC8X0/exec";
       const API_TIMEOUT_MS = 12000;
+      const VIRTUAL_BUFFER_HOURS = 3;
 
       window.__DAILY_LOG_ERRORS__ = [];
       let globalErrorReporter = null;
@@ -823,14 +824,6 @@
         }
       }
 
-      function safeStorageRemove(key) {
-        try {
-          localStorage.removeItem(key);
-        } catch (err) {
-          reportAppError('ERR_STORAGE_REMOVE', `Failed to remove local key (${key})`, { key }, err);
-        }
-      }
-
       function getTodayDateStr() {
         const d = new Date();
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -852,6 +845,17 @@
         if (!timeStr || timeStr.indexOf(':') === -1) return null;
         const [h, m] = timeStr.split(':').map(v => parseInt(v, 10));
         return (isNaN(h) || isNaN(m)) ? null : h * 60 + m;
+      }
+
+      function getEffectiveHours(baseTimeStr, targetTimeStr) {
+        const baseM = parseTimeToMinutes(baseTimeStr);
+        const targetM = parseTimeToMinutes(targetTimeStr);
+        if (baseM === null || targetM === null) return null;
+        let diffMin = targetM - baseM;
+        if (diffMin < 0) {
+          diffMin = Math.abs(diffMin) <= 3 ? 0 : diffMin + 1440;
+        }
+        return (diffMin / 60) + VIRTUAL_BUFFER_HOURS;
       }
 
       function buildSmartTimeDigits(rawVal) {
@@ -908,27 +912,6 @@
         if (raw === null || raw === undefined) return null;
         const n = parseFloat(String(raw).replace(/,/g, '.').replace(/[^0-9.]/g, ''));
         return (!isNaN(n) && n > 0) ? n : null;
-      }
-
-      function computeCarryoverDelta(validDoses, cap, recRate) {
-        if (!validDoses || validDoses.length === 0) return 0;
-        let delta = 0;
-        const amt1 = getParsedAmount(validDoses[0].amount);
-        if (amt1 < cap) {
-          delta = cap - amt1;
-        }
-        for (let i = 1; i < validDoses.length; i++) {
-          const prevM = parseTimeToMinutes(validDoses[i - 1].time);
-          const curM = parseTimeToMinutes(validDoses[i].time);
-          const amt = getParsedAmount(validDoses[i].amount);
-          if (prevM === null || curM === null) continue;
-          let diffMin = curM - prevM;
-          if (diffMin < 0) diffMin = Math.abs(diffMin) <= 3 ? 0 : diffMin + 1440;
-          let rawRec = delta + recRate * (diffMin / 60);
-          if (i === 1 && diffMin <= 10) rawRec = delta;
-          delta = rawRec - amt;
-        }
-        return delta;
       }
 
       function callApi(params, onSuccess, onError, attempt = 1) {
@@ -1046,9 +1029,6 @@
           const isSaving = ref(false);
           const isUserModified = ref(false);
           const isManualTimeSet = ref(false);
-          const lastRawRecommendation = ref(null);
-          const liveRateParams = ref(null);
-          const currentTypingRate = ref(null);
           const nowTick = ref(Date.now());
           const settingsVersion = ref(0);
 
@@ -1143,6 +1123,16 @@
           const currentRecRate = computed(() => getRecommendationRate(doseDate.value));
           const isAmountNegative = computed(() => String(amount.value || '').trim().startsWith('-'));
 
+          const getBaseWakeTime = (data) => {
+            const w = (wakeTime.value || (data && data.wakeTime) || '').trim();
+            if (parseTimeToMinutes(w) !== null) return w;
+            if (data && Array.isArray(data.allDoses)) {
+              const valid = data.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0 && d.time);
+              if (valid.length > 0) return valid[0].time;
+            }
+            return null;
+          };
+
           const liveAwake = computed(() => {
             nowTick.value;
             const wVal = (wakeTime.value || (stats.value && stats.value.wakeTime) || '').trim();
@@ -1178,8 +1168,11 @@
             if ((amtVal <= 0 && !isNeg) || !stats.value) {
               return { visible: false, total: '-', diff: '-', rateText: '-', rateColor: '#888' };
             }
-            const curTot = parseFloat(String(stats.value.dailyTotal || '0').replace(' g', '').replace(',', '.').trim()) || 0;
-            const newTotal = (isNeg ? curTot : curTot + amtVal).toFixed(2) + ' g';
+
+            const validDoses = (stats.value.allDoses || []).filter(d => d.hasData && getParsedAmount(d.amount) > 0);
+            const consumedTotal = validDoses.reduce((s, d) => s + getParsedAmount(d.amount), 0);
+            const newTotalVal = isNeg ? consumedTotal : (consumedTotal + amtVal);
+            const newTotal = newTotalVal.toFixed(2) + ' g';
 
             const last = stats.value.lastDose;
             let diffText = '-';
@@ -1189,124 +1182,50 @@
               diffText = (parseFloat(d) > 0 ? '+' : '') + d + ' g';
             }
 
-            const validDoses = (stats.value.allDoses || []).filter(d => d.hasData && getParsedAmount(d.amount) > 0 && d.time);
-            const recordedCount = validDoses.length;
-            if (recordedCount === 0 && !isNeg) {
+            const baseWake = getBaseWakeTime(stats.value);
+            const effH = baseWake ? getEffectiveHours(baseWake, time.value.trim()) : VIRTUAL_BUFFER_HOURS;
+            const recRate = currentRecRate.value;
+
+            if (!effH || effH <= 0) {
               return { visible: true, total: newTotal, diff: diffText, rateText: '-', rateColor: '#888' };
             }
 
-            const recRate = currentRecRate.value;
-            let resultingRate = recRate;
-            const curM = parseTimeToMinutes(time.value.trim());
-            const lastM = (last && last.time) ? parseTimeToMinutes(last.time) : null;
-
-            if (isNeg || amtVal === 0) {
-              if (liveRateParams.value) {
-                const p = liveRateParams.value;
-                let elapsedH = 0;
-                if (curM !== null && lastM !== null) {
-                  let dM = curM - lastM;
-                  if (dM < 0) dM += 1440;
-                  elapsedH = dM / 60;
-                }
-                const currentNet = p.initialDelta + p.recRate * elapsedH;
-                resultingRate = (currentNet < -0.005 && p.lastIntHours > 0) ? (p.recRate + (-currentNet / p.lastIntHours)) : p.recRate;
-              }
-              const col = (resultingRate > recRate + 0.005) ? '#ef5350' : '#81c784';
-              return { visible: true, total: newTotal, diff: diffText, rateText: `${resultingRate.toFixed(2)} g/h`, rateColor: col };
-            }
-
-            if (curM !== null && lastM !== null) {
-              let diffMin = curM - lastM;
-              if (diffMin < 0) diffMin += 1440;
-              const intHours = diffMin / 60;
-              if (intHours > 0) {
-                const initialDelta = computeCarryoverDelta(validDoses, currentCap.value, recRate);
-                const exactRec = initialDelta + recRate * intHours;
-                resultingRate = (amtVal > exactRec + 0.005) ? ((amtVal - initialDelta) / intHours) : recRate;
-              }
-            }
-
-            currentTypingRate.value = resultingRate;
-            const col = (resultingRate <= recRate && !isNeg) ? '#81c784' : '#ef5350';
-            return { visible: true, total: newTotal, diff: diffText, rateText: `${resultingRate.toFixed(2)} g/h`, rateColor: col };
+            const resultingRate = newTotalVal / effH;
+            const col = (resultingRate <= recRate + 0.005) ? '#81c784' : '#ef5350';
+            return {
+              visible: true,
+              total: newTotal,
+              diff: diffText,
+              rateText: `${resultingRate.toFixed(2)} g/h`,
+              rateColor: col
+            };
           });
 
           const saveToLocalCache = (sName, dStr, data) => {
             safeStorageSet(`taper_fast_cache_v24_${sName}_${dStr}`, data);
           };
 
-          const syncLiveRateParams = (data) => {
-            const last = data.lastDose;
-            if (!last) return;
-            const validDoses = (data.allDoses || []).filter(d => d.hasData && getParsedAmount(d.amount) > 0 && d.time);
-            const savedDoseNum = validDoses.length;
-            if (savedDoseNum === 0) return;
-
-            let lastIntHours = 0;
-            if (validDoses.length > 1) {
-              const pM = parseTimeToMinutes(validDoses[validDoses.length - 2].time);
-              const lM = parseTimeToMinutes(last.time);
-              if (pM !== null && lM !== null) {
-                let d = lM - pM;
-                if (d <= 0) d += 1440;
-                lastIntHours = d / 60;
-              }
-            } else if (validDoses.length === 1 && data.wakeTime) {
-              const wM = parseTimeToMinutes(data.wakeTime);
-              const lM = parseTimeToMinutes(last.time);
-              if (wM !== null && lM !== null) {
-                let d = lM - wM;
-                if (d <= 0) d += 1440;
-                lastIntHours = d / 60;
-              }
-            }
-
-            const recRate = currentRecRate.value;
-            const cap = currentCap.value;
-            const prevDelta = computeCarryoverDelta(validDoses.slice(0, -1), cap, recRate);
-            const initialDelta = computeCarryoverDelta(validDoses, cap, recRate);
-            const lAmt = getParsedAmount(last.amount);
-            let calcRate = recRate;
-            if (lastIntHours > 0) {
-              const exactRec = prevDelta + recRate * lastIntHours;
-              if (lAmt > exactRec + 0.005) calcRate = (lAmt - prevDelta) / lastIntHours;
-            }
-
-            liveRateParams.value = {
-              doseNumber: savedDoseNum,
-              lastIntHours,
-              initialDelta,
-              recRate,
-              baseRate: recRate + 0.01,
-              startingHighRate: calcRate
-            };
-          };
-
+          // Unified allowance with +3h virtual overnight buffer
           const applyDoseRecommendation = (data) => {
             if (!data || !data.found || isUserModified.value) return;
             const validDoses = (data.allDoses || []).filter(d => d.hasData && getParsedAmount(d.amount) > 0 && d.time);
             const cap = currentCap.value;
 
-            if (validDoses.length === 0) {
-              lastRawRecommendation.value = cap;
-              amount.value = cap.toFixed(2);
-              return;
-            }
             if (validDoses.length + 1 > 8) return;
 
-            const curM = parseTimeToMinutes(time.value.trim());
-            const lastM = parseTimeToMinutes(validDoses[validDoses.length - 1].time);
-            if (curM === null || lastM === null) return;
+            const baseWake = getBaseWakeTime(data);
+            if (!baseWake) {
+              if (validDoses.length === 0) amount.value = cap.toFixed(2);
+              return;
+            }
 
-            let elapsedMin = curM - lastM;
-            if (elapsedMin < 0) elapsedMin = Math.abs(elapsedMin) <= 3 ? 0 : elapsedMin + 1440;
+            const effH = getEffectiveHours(baseWake, time.value.trim());
+            if (effH === null) return;
 
-            const initialDelta = computeCarryoverDelta(validDoses, cap, currentRecRate.value);
-            let netNeeded = initialDelta + currentRecRate.value * (elapsedMin / 60);
-            if (validDoses.length === 1 && elapsedMin <= 10) netNeeded = initialDelta;
+            const consumedTotal = validDoses.reduce((s, d) => s + getParsedAmount(d.amount), 0);
+            const allowedTotal = effH * currentRecRate.value;
+            let netNeeded = allowedTotal - consumedTotal;
 
-            lastRawRecommendation.value = netNeeded;
             if (netNeeded > cap) netNeeded = cap;
 
             let rounded = Math.round(netNeeded * 100) / 100;
@@ -1319,7 +1238,6 @@
             if (data.wakeTime) wakeTime.value = data.wakeTime;
             const dt = String(data.dayType || '').toLowerCase();
             activeDayType.value = (dt === 'munkanap' || dt === 'dolgozós' || dt === 'work') ? 'Munkanap' : 'Szabadnap';
-            syncLiveRateParams(data);
 
             const activeEl = document.activeElement;
             const isEditingTable = activeEl && activeEl.id && (activeEl.id.startsWith('t_time_') || activeEl.id.startsWith('t_amount_'));
@@ -1372,9 +1290,6 @@
             stats.value = null;
             isUserModified.value = false;
             isManualTimeSet.value = false;
-            lastRawRecommendation.value = null;
-            liveRateParams.value = null;
-            currentTypingRate.value = null;
             amount.value = '';
             loadStats();
           };
@@ -1392,11 +1307,13 @@
           const onWakeInput = (e) => {
             wakeTime.value = formatTimeStr(e.target.value);
             e.target.value = wakeTime.value;
+            if (!isUserModified.value && stats.value) applyDoseRecommendation(stats.value);
           };
 
           const onWakeBlur = () => {
             wakeTime.value = normalizeTimeStr(wakeTime.value);
             if (wakeTime.value && wakeTime.value.indexOf(':') === -1) return;
+            if (!isUserModified.value && stats.value) applyDoseRecommendation(stats.value);
             enqueueWrite({ action: 'saveWakeTime', sheetName: sheetName.value, dateStr: doseDate.value, wakeTime: wakeTime.value }, (res) => {
               if (res && res.success) {
                 saveToLocalCache(sheetName.value, doseDate.value, res.stats);
@@ -1440,7 +1357,6 @@
             const amountVal = getParsedAmount(rawVal);
             if (amountVal <= 0) return;
 
-            const recRate = currentRecRate.value;
             isSaving.value = true;
             isUserModified.value = false;
             isManualTimeSet.value = false;
@@ -1462,22 +1378,23 @@
                   updatedDoses.push({ doseNumber: k, time: '', amount: '', savedTime: '', savedAmount: '', hasData: false });
                 }
               }
-              const curTot = parseFloat(String(stats.value.dailyTotal || '0').replace(' g', '').replace(',', '.').trim()) || 0;
+              const newTot = valid.reduce((s, d) => s + d.amount, 0);
+              const baseWake = getBaseWakeTime(stats.value);
+              const effH = baseWake ? getEffectiveHours(baseWake, time.value.trim()) : VIRTUAL_BUFFER_HOURS;
               stats.value = {
                 ...stats.value,
                 allDoses: updatedDoses,
-                dailyTotal: (curTot + amountVal).toFixed(2) + ' g',
+                dailyTotal: newTot.toFixed(2) + ' g',
                 lastDose: {
                   doseNumber: valid.length,
                   time: time.value.trim(),
                   amount: amountVal.toFixed(2),
                   awakeTime: '-',
                   diff: '-',
-                  rate: valid.length > 1 ? recRate.toFixed(2) : '-'
+                  rate: effH ? (newTot / effH).toFixed(2) : '-'
                 }
               };
               tableDoses.value = updatedDoses.map(d => ({ ...d }));
-              syncLiveRateParams(stats.value);
               applyDoseRecommendation(stats.value);
             }
 
@@ -1562,7 +1479,6 @@
             stats.value.dailyTotal = sum.toFixed(2) + ' g';
             stats.value.lastDose = lastD;
             saveToLocalCache(sheetName.value, doseDate.value, stats.value);
-            syncLiveRateParams(stats.value);
             if (!isUserModified.value) applyDoseRecommendation(stats.value);
           };
 
@@ -1585,7 +1501,6 @@
               item.time = '';
               item.savedTime = '';
               item.savedAmount = '';
-              liveRateParams.value = null;
               recomputeLocalTableSummary();
               enqueueWrite({
                 action: 'saveSingleDoseSilent',
@@ -1606,7 +1521,6 @@
             item.amount = normAmtStr;
             item.savedTime = normTime;
             item.savedAmount = normAmtStr;
-            liveRateParams.value = null;
             recomputeLocalTableSummary();
             enqueueWrite({
               action: 'saveSingleDoseSilent',
@@ -1652,12 +1566,8 @@
             }
 
             settingsVersion.value++;
-            liveRateParams.value = null;
             showSettingsModal.value = false;
-            if (stats.value) {
-              syncLiveRateParams(stats.value);
-              if (!isUserModified.value) applyDoseRecommendation(stats.value);
-            }
+            if (stats.value && !isUserModified.value) applyDoseRecommendation(stats.value);
           };
 
           /* --- STATISTICS MODAL --- */
@@ -1871,20 +1781,11 @@
             if (valid.length < n || n < 1) return null;
             let total = 0;
             for (let i = 0; i < n; i++) total += getParsedAmount(valid[i].amount);
-            let rate = parseRateNumber(valid[n - 1].rate);
-            if (rate === null && n >= 2) {
-              const firstM = parseTimeToMinutes(valid[0].time);
-              const nthM = parseTimeToMinutes(valid[n - 1].time);
-              if (firstM !== null && nthM !== null) {
-                let diffM = nthM - firstM;
-                if (diffM <= 0) diffM += 1440;
-                if (diffM > 0) {
-                  let afterFirst = 0;
-                  for (let i = 1; i < n; i++) afterFirst += getParsedAmount(valid[i].amount);
-                  rate = afterFirst / (diffM / 60);
-                }
-              }
-            }
+            const baseTime = (dayStats.wakeTime && parseTimeToMinutes(dayStats.wakeTime) !== null)
+              ? dayStats.wakeTime
+              : valid[0].time;
+            const effH = getEffectiveHours(baseTime, valid[n - 1].time);
+            const rate = (effH && effH > 0) ? (total / effH) : parseRateNumber(valid[n - 1].rate);
             return { total, rate };
           };
 
@@ -1892,12 +1793,7 @@
             if (!dayStats || !Array.isArray(dayStats.allDoses)) return null;
             const valid = dayStats.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0);
             if (valid.length === 0) return null;
-            const snap = getDoseSnapshot(dayStats, valid.length);
-            const avgRate = parseRateNumber(dayStats.avgRate);
-            return {
-              total: snap.total,
-              rate: avgRate !== null ? avgRate : snap.rate
-            };
+            return getDoseSnapshot(dayStats, valid.length);
           };
 
           const calcDaily = () => {
