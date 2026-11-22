@@ -462,7 +462,7 @@
       <div class="modal-box">
         <div class="modal-header">
           <span class="modal-title">Settings</span>
-          <button type="button" class="modal-close" onclick="closeSettingsModal()">×</button>
+          <button type="button" class="modal-close" onclick="closeSettingsModal()">&times;</button>
         </div>
 
         <div class="modal-section">
@@ -742,6 +742,7 @@
 
       function onWakeTimeBlur(el) {
         normalizeTimeField(el);
+        updateLiveAwakeTime();
         onWakeTimeChange();
       }
 
@@ -816,6 +817,7 @@
 
         if (timeInput && timeInput.value !== currentFormattedTime) {
           timeInput.value = currentFormattedTime;
+          updateLiveAwakeTime();
           if (!isUserModified && currentStatsData) {
             applyDoseRecommendation(currentStatsData);
           } else {
@@ -923,6 +925,7 @@
       }
 
       function onTimeChange() {
+        updateLiveAwakeTime();
         if (!isUserModified && currentStatsData) {
           applyDoseRecommendation(currentStatsData);
         } else {
@@ -1648,14 +1651,12 @@
         var targetLimit = recommendationRate + 0.01;
 
         var elapsedHtml = '-';
-        var awakeHtml = '-';
 
         if (!last) {
           lastRecordedTimeStr = null;
         } else {
           lastRecordedTimeStr = last.time;
           elapsedHtml = 'Calculating...';
-          awakeHtml = cleanDisplay(last.awakeTime);
           
           var validDoses = data.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0);
           var savedDoseNum = validDoses.length;
@@ -1722,25 +1723,23 @@
         if (summaryCard) {
           summaryCard.innerHTML = `
             <div class="stat-row"><span class="stat-label">Elapsed</span><span id="liveElapsedDisplay" class="stat-value">${elapsedHtml}</span></div>
-            <div class="stat-row"><span class="stat-label">Awake</span><span class="stat-value">${awakeHtml}</span></div>
+            <div class="stat-row"><span class="stat-label">Awake</span><span id="liveAwakeDisplay" class="stat-value">-</span></div>
             <div class="stat-row"><span class="stat-label">Max</span><span class="stat-value">${currentCap.toFixed(2)} g</span></div>
             <div class="stat-row"><span class="stat-label">Total</span><span class="stat-value">${cleanDisplay(data.dailyTotal)}</span></div>
             <div class="stat-row"><span class="stat-label">Average</span><span class="stat-value">${cleanDisplay(data.avgDose)}</span></div>
             <div class="stat-row"><span class="stat-label">Interval</span><span class="stat-value">${cleanDisplay(data.avgInterval)}</span></div>
           `;
-          if (last) {
-            updateLiveElapsedTime();
-          }
+          updateLiveElapsedTime();
         }
       }
 
       function renderAllStats(data) {
-        updateUpperCardsOnly(data);
-
         if (data.wakeTime) {
           var wakeInput = document.getElementById('wakeTime');
           if (wakeInput) wakeInput.value = data.wakeTime;
         }
+
+        updateUpperCardsOnly(data);
 
         var activeDay = (data.dayType && (data.dayType.toLowerCase() === 'munkanap' || data.dayType.toLowerCase() === 'dolgozós' || data.dayType.toLowerCase() === 'work')) ? 'Munkanap' : 'Szabadnap';
         activeDayType = activeDay;
@@ -1813,7 +1812,35 @@
         applyDoseRecommendation(data);
       }
 
+      function updateLiveAwakeTime() {
+        var awakeEl = document.getElementById('liveAwakeDisplay');
+        if (!awakeEl) return;
+
+        var wakeInput = document.getElementById('wakeTime');
+        var wakeVal = wakeInput ? wakeInput.value.trim() : '';
+        if (!wakeVal && currentStatsData && currentStatsData.wakeTime) {
+          wakeVal = currentStatsData.wakeTime;
+        }
+
+        var wakeM = parseTimeToMinutes(wakeVal);
+        if (wakeM === null) {
+          awakeEl.innerText = '-';
+          return;
+        }
+
+        var now = new Date();
+        var curM = now.getHours() * 60 + now.getMinutes();
+        var diffMin = curM - wakeM;
+        if (diffMin < 0) diffMin += 1440;
+
+        var hours = Math.floor(diffMin / 60);
+        var mins = diffMin % 60;
+        awakeEl.innerText = String(hours).padStart(2, '0') + ':' + String(mins).padStart(2, '0');
+      }
+
       function updateLiveElapsedTime() {
+        updateLiveAwakeTime();
+
         var el = document.getElementById('liveElapsedDisplay');
         if (!el || !lastRecordedTimeStr) return;
 
