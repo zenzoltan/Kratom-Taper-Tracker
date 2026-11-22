@@ -731,25 +731,25 @@
             <div class="compare-row">
               <span class="compare-label">{{ comparisons.daily.label }}</span>
               <span class="compare-vals">
-                <span v-if="dailyCompareLoading && comparisons.daily.dose.text === '-'" style="color:#666;">...</span>
+                <span v-if="dailyCompareLoading && (activeStatsMetric === 'total' ? comparisons.daily.dose.text === '-' : comparisons.daily.rate.text === '-')" style="color:#666;">...</span>
                 <template v-else>
-                  <span :style="{ color: comparisons.daily.dose.color }">{{ comparisons.daily.dose.text }}</span>
-                  <span :style="{ color: comparisons.daily.rate.color }">{{ comparisons.daily.rate.text }}</span>
+                  <span v-if="activeStatsMetric === 'total'" :style="{ color: comparisons.daily.dose.color }">{{ comparisons.daily.dose.text }}</span>
+                  <span v-else :style="{ color: comparisons.daily.rate.color }">{{ comparisons.daily.rate.text }}</span>
                 </template>
               </span>
             </div>
             <div class="compare-row">
               <span class="compare-label">Weekly</span>
               <span class="compare-vals">
-                <span :style="{ color: comparisons.week.dose.color }">{{ comparisons.week.dose.text }}</span>
-                <span :style="{ color: comparisons.week.rate.color }">{{ comparisons.week.rate.text }}</span>
+                <span v-if="activeStatsMetric === 'total'" :style="{ color: comparisons.week.dose.color }">{{ comparisons.week.dose.text }}</span>
+                <span v-else :style="{ color: comparisons.week.rate.color }">{{ comparisons.week.rate.text }}</span>
               </span>
             </div>
             <div class="compare-row">
               <span class="compare-label">Monthly</span>
               <span class="compare-vals">
-                <span :style="{ color: comparisons.month.dose.color }">{{ comparisons.month.dose.text }}</span>
-                <span :style="{ color: comparisons.month.rate.color }">{{ comparisons.month.rate.text }}</span>
+                <span v-if="activeStatsMetric === 'total'" :style="{ color: comparisons.month.dose.color }">{{ comparisons.month.dose.text }}</span>
+                <span v-else :style="{ color: comparisons.month.rate.color }">{{ comparisons.month.rate.text }}</span>
               </span>
             </div>
           </div>
