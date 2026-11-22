@@ -469,7 +469,7 @@
           <span class="error-code">[{{ activeError.code }}]</span>
           <div class="error-actions">
             <button type="button" class="error-btn" @click="copyErrorReport">{{ copyFeedback || 'Copy' }}</button>
-            <button type="button" class="error-btn" @click="dismissError">×</button>
+            <button type="button" class="error-btn" @click="dismissError">&times;</button>
           </div>
         </div>
         <div class="error-msg-text">{{ activeError.message }}</div>
@@ -621,7 +621,7 @@
         <div class="modal-box">
           <div class="modal-header">
             <span class="modal-title">Settings</span>
-            <button type="button" class="modal-close" @click="showSettingsModal = false">×</button>
+            <button type="button" class="modal-close" @click="showSettingsModal = false">&times;</button>
           </div>
 
           <div class="modal-section">
@@ -679,7 +679,7 @@
         <div class="modal-box modal-box-wide">
           <div class="modal-header">
             <span class="modal-title">Statistics</span>
-            <button type="button" class="modal-close" @click="showStatsModal = false">×</button>
+            <button type="button" class="modal-close" @click="showStatsModal = false">&times;</button>
           </div>
 
           <div class="range-tabs">
@@ -908,6 +908,28 @@
         if (raw === null || raw === undefined) return null;
         const n = parseFloat(String(raw).replace(/,/g, '.').replace(/[^0-9.]/g, ''));
         return (!isNaN(n) && n > 0) ? n : null;
+      }
+
+      // Deterministic carryover delta from synced Google Sheets doses (identical across all devices)
+      function computeCarryoverDelta(validDoses, cap, recRate) {
+        if (!validDoses || validDoses.length === 0) return 0;
+        let delta = 0;
+        const amt1 = getParsedAmount(validDoses[0].amount);
+        if (amt1 < cap) {
+          delta = cap - amt1;
+        }
+        for (let i = 1; i < validDoses.length; i++) {
+          const prevM = parseTimeToMinutes(validDoses[i - 1].time);
+          const curM = parseTimeToMinutes(validDoses[i].time);
+          const amt = getParsedAmount(validDoses[i].amount);
+          if (prevM === null || curM === null) continue;
+          let diffMin = curM - prevM;
+          if (diffMin < 0) diffMin = Math.abs(diffMin) <= 3 ? 0 : diffMin + 1440;
+          let rawRec = delta + recRate * (diffMin / 60);
+          if (i === 1 && diffMin <= 10) rawRec = delta;
+          delta = rawRec - amt;
+        }
+        return delta;
       }
 
       function callApi(params, onSuccess, onError) {
@@ -1159,7 +1181,8 @@
               diffText = (parseFloat(d) > 0 ? '+' : '') + d + ' g';
             }
 
-            const recordedCount = (stats.value.allDoses || []).filter(d => d.hasData).length;
+            const validDoses = (stats.value.allDoses || []).filter(d => d.hasData && getParsedAmount(d.amount) > 0 && d.time);
+            const recordedCount = validDoses.length;
             if (recordedCount === 0 && !isNeg) {
               return { visible: true, total: newTotal, diff: diffText, rateText: '-', rateColor: '#888' };
             }
@@ -1190,11 +1213,7 @@
               if (diffMin < 0) diffMin += 1440;
               const intHours = diffMin / 60;
               if (intHours > 0) {
-                let initialDelta = 0;
-                if (recordedCount >= 1) {
-                  const savedDiff = safeStorageGet(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${recordedCount}`);
-                  if (savedDiff !== null && !isNaN(parseFloat(savedDiff))) initialDelta = parseFloat(savedDiff);
-                }
+                const initialDelta = computeCarryoverDelta(validDoses, currentCap.value, recRate);
                 const exactRec = initialDelta + recRate * intHours;
                 resultingRate = (amtVal > exactRec + 0.005) ? ((amtVal - initialDelta) / intHours) : recRate;
               }
@@ -1212,9 +1231,9 @@
           const syncLiveRateParams = (data) => {
             const last = data.lastDose;
             if (!last) return;
-            const validDoses = (data.allDoses || []).filter(d => d.hasData && getParsedAmount(d.amount) > 0);
+            const validDoses = (data.allDoses || []).filter(d => d.hasData && getParsedAmount(d.amount) > 0 && d.time);
             const savedDoseNum = validDoses.length;
-            if (liveRateParams.value && liveRateParams.value.doseNumber === savedDoseNum) return;
+            if (savedDoseNum === 0) return;
 
             let lastIntHours = 0;
             if (validDoses.length > 1) {
@@ -1235,10 +1254,10 @@
               }
             }
 
-            const prevDoseNum = last.doseNumber - 1;
-            const prevDelta = prevDoseNum >= 1 ? (parseFloat(safeStorageGet(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${prevDoseNum}`)) || 0) : 0;
-            const initialDelta = parseFloat(safeStorageGet(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${last.doseNumber}`)) || 0;
             const recRate = currentRecRate.value;
+            const cap = currentCap.value;
+            const prevDelta = computeCarryoverDelta(validDoses.slice(0, -1), cap, recRate);
+            const initialDelta = computeCarryoverDelta(validDoses, cap, recRate);
             const lAmt = getParsedAmount(last.amount);
             let calcRate = recRate;
             if (lastIntHours > 0) {
@@ -1275,9 +1294,7 @@
             let elapsedMin = curM - lastM;
             if (elapsedMin < 0) elapsedMin = Math.abs(elapsedMin) <= 3 ? 0 : elapsedMin + 1440;
 
-            const savedDiff = safeStorageGet(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${validDoses.length}`);
-            const initialDelta = (savedDiff !== null && !isNaN(parseFloat(savedDiff))) ? parseFloat(savedDiff) : 0;
-
+            const initialDelta = computeCarryoverDelta(validDoses, cap, currentRecRate.value);
             let netNeeded = initialDelta + currentRecRate.value * (elapsedMin / 60);
             if (validDoses.length === 1 && elapsedMin <= 10) netNeeded = initialDelta;
 
@@ -1415,56 +1432,10 @@
             const amountVal = getParsedAmount(rawVal);
             if (amountVal <= 0) return;
 
-            const validCount = stats.value && stats.value.allDoses
-              ? stats.value.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length
-              : 0;
-            const currentDoseIndex = validCount + 1;
-
-            let initialDelta = 0;
-            if (currentDoseIndex === 1 && lastRawRecommendation.value !== null) {
-              if (amountVal < lastRawRecommendation.value) initialDelta = lastRawRecommendation.value - amountVal;
-            } else if (currentDoseIndex > 1 && lastRawRecommendation.value !== null) {
-              initialDelta = lastRawRecommendation.value - amountVal;
-            }
-
             const recRate = currentRecRate.value;
-            let lastIntHours = 0;
-            const curM = parseTimeToMinutes(time.value.trim());
-            const last = stats.value && stats.value.lastDose;
-            if (last && curM !== null) {
-              const lastM = parseTimeToMinutes(last.time);
-              if (lastM !== null) {
-                let d = curM - lastM;
-                if (d <= 0) d += 1440;
-                lastIntHours = d / 60;
-              }
-            } else if (!last && stats.value && stats.value.wakeTime && curM !== null) {
-              const wM = parseTimeToMinutes(stats.value.wakeTime);
-              if (wM !== null) {
-                let d = curM - wM;
-                if (d <= 0) d += 1440;
-                lastIntHours = d / 60;
-              }
-            }
-
-            liveRateParams.value = {
-              doseNumber: currentDoseIndex,
-              lastIntHours,
-              initialDelta,
-              recRate,
-              baseRate: recRate + 0.01,
-              startingHighRate: currentTypingRate.value || recRate
-            };
-            safeStorageSet(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${currentDoseIndex}`, String(initialDelta));
-
             isSaving.value = true;
             isUserModified.value = false;
             isManualTimeSet.value = false;
-            lastRawRecommendation.value = initialDelta;
-
-            let rVal = Math.round(initialDelta * 100) / 100;
-            if (Math.abs(rVal) < 0.005) rVal = 0;
-            amount.value = rVal.toFixed(2);
 
             if (stats.value && stats.value.allDoses) {
               const valid = stats.value.allDoses
@@ -1492,13 +1463,14 @@
                   doseNumber: valid.length,
                   time: time.value.trim(),
                   amount: amountVal.toFixed(2),
-                  doseDiff: initialDelta,
                   awakeTime: '-',
                   diff: '-',
                   rate: valid.length > 1 ? recRate.toFixed(2) : '-'
                 }
               };
               tableDoses.value = updatedDoses.map(d => ({ ...d }));
+              syncLiveRateParams(stats.value);
+              applyDoseRecommendation(stats.value);
             }
 
             enqueueWrite({
@@ -1512,7 +1484,6 @@
             }, (res) => {
               isSaving.value = false;
               if (res && res.success && res.stats) {
-                if (res.stats.lastDose) res.stats.lastDose.doseDiff = initialDelta;
                 saveToLocalCache(sheetName.value, doseDate.value, res.stats);
                 hydrateStats(res.stats);
               }
@@ -1583,6 +1554,7 @@
             stats.value.dailyTotal = sum.toFixed(2) + ' g';
             stats.value.lastDose = lastD;
             saveToLocalCache(sheetName.value, doseDate.value, stats.value);
+            syncLiveRateParams(stats.value);
             if (!isUserModified.value) applyDoseRecommendation(stats.value);
           };
 
@@ -1605,7 +1577,6 @@
               item.time = '';
               item.savedTime = '';
               item.savedAmount = '';
-              safeStorageRemove(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${item.doseNumber}`);
               liveRateParams.value = null;
               recomputeLocalTableSummary();
               enqueueWrite({
@@ -1675,7 +1646,10 @@
             settingsVersion.value++;
             liveRateParams.value = null;
             showSettingsModal.value = false;
-            if (stats.value && !isUserModified.value) applyDoseRecommendation(stats.value);
+            if (stats.value) {
+              syncLiveRateParams(stats.value);
+              if (!isUserModified.value) applyDoseRecommendation(stats.value);
+            }
           };
 
           /* --- STATISTICS MODAL --- */
