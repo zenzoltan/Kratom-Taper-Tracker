@@ -469,7 +469,7 @@
           <span class="error-code">[{{ activeError.code }}]</span>
           <div class="error-actions">
             <button type="button" class="error-btn" @click="copyErrorReport">{{ copyFeedback || 'Copy' }}</button>
-            <button type="button" class="error-btn" @click="dismissError">&times;</button>
+            <button type="button" class="error-btn" @click="dismissError">×</button>
           </div>
         </div>
         <div class="error-msg-text">{{ activeError.message }}</div>
@@ -621,7 +621,7 @@
         <div class="modal-box">
           <div class="modal-header">
             <span class="modal-title">Settings</span>
-            <button type="button" class="modal-close" @click="showSettingsModal = false">&times;</button>
+            <button type="button" class="modal-close" @click="showSettingsModal = false">×</button>
           </div>
 
           <div class="modal-section">
@@ -679,7 +679,7 @@
         <div class="modal-box modal-box-wide">
           <div class="modal-header">
             <span class="modal-title">Statistics</span>
-            <button type="button" class="modal-close" @click="showStatsModal = false">&times;</button>
+            <button type="button" class="modal-close" @click="showStatsModal = false">×</button>
           </div>
 
           <div class="range-tabs">
@@ -729,7 +729,7 @@
 
           <div class="stats-compare-box">
             <div class="compare-row">
-              <span class="compare-label">Daily{{ comparisons.daily.doseIndex ? ' (#' + comparisons.daily.doseIndex + ')' : '' }}</span>
+              <span class="compare-label">{{ comparisons.daily.label }}</span>
               <span class="compare-vals">
                 <span v-if="dailyCompareLoading && comparisons.daily.dose.text === '-'" style="color:#666;">...</span>
                 <template v-else>
@@ -1758,7 +1758,6 @@
               });
             }
 
-            // First try yesterday
             fetchPrevDayForComparison(yestStr, () => {
               dailyCompareLoading.value = false;
             });
@@ -1786,10 +1785,10 @@
 
                 if (filtered.length > 0) {
                   fullHistoryPoints.value = filtered;
-                  // Fallback: if yesterday had no valid data, load the most recent previous logged day
                   const tCount = getValidDoseCount(todayDayStats.value);
-                  if (getValidDoseCount(prevDayStats.value) < Math.max(1, tCount)) {
-                    const prevDays = filtered.filter(p => p.date < todayStr && p.count >= Math.max(1, tCount));
+                  const neededPrevCount = tCount >= 6 ? 1 : Math.max(1, tCount);
+                  if (getValidDoseCount(prevDayStats.value) < neededPrevCount) {
+                    const prevDays = filtered.filter(p => p.date < todayStr && p.count >= neededPrevCount);
                     const fallbackDay = prevDays.length > 0 ? prevDays[prevDays.length - 1] : filtered.filter(p => p.date < todayStr).pop();
                     if (fallbackDay && fallbackDay.date !== yestStr) {
                       dailyCompareLoading.value = true;
@@ -1898,17 +1897,44 @@
             return { total, rate };
           };
 
+          const getFullDaySnapshot = (dayStats) => {
+            if (!dayStats || !Array.isArray(dayStats.allDoses)) return null;
+            const valid = dayStats.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0);
+            if (valid.length === 0) return null;
+            const snap = getDoseSnapshot(dayStats, valid.length);
+            const avgRate = parseRateNumber(dayStats.avgRate);
+            return {
+              total: snap.total,
+              rate: avgRate !== null ? avgRate : snap.rate
+            };
+          };
+
           const calcDaily = () => {
             const tStats = (doseDate.value === getTodayDateStr() && stats.value && stats.value.found)
               ? stats.value
               : todayDayStats.value;
             if (!tStats || !Array.isArray(tStats.allDoses)) {
-              return { doseIndex: 0, dose: formatDiffObj(null, 'g'), rate: formatDiffObj(null, 'g/h') };
+              return { label: 'Daily', dose: formatDiffObj(null, 'g'), rate: formatDiffObj(null, 'g/h') };
             }
             const n = getValidDoseCount(tStats);
             if (n === 0) {
-              return { doseIndex: 0, dose: formatDiffObj(null, 'g'), rate: formatDiffObj(null, 'g/h') };
+              return { label: 'Daily', dose: formatDiffObj(null, 'g'), rate: formatDiffObj(null, 'g/h') };
             }
+
+            if (n >= 6) {
+              const todayFull = getFullDaySnapshot(tStats);
+              const prevFull = getFullDaySnapshot(prevDayStats.value);
+              const doseDiff = (todayFull && prevFull) ? (todayFull.total - prevFull.total) : null;
+              const rateDiff = (todayFull && prevFull && todayFull.rate !== null && prevFull.rate !== null)
+                ? (todayFull.rate - prevFull.rate)
+                : null;
+              return {
+                label: 'Daily',
+                dose: formatDiffObj(doseDiff, 'g'),
+                rate: formatDiffObj(rateDiff, 'g/h')
+              };
+            }
+
             const todaySnap = getDoseSnapshot(tStats, n);
             const prevSnap = getDoseSnapshot(prevDayStats.value, n);
             const doseDiff = (todaySnap && prevSnap) ? (todaySnap.total - prevSnap.total) : null;
@@ -1916,7 +1942,7 @@
               ? (todaySnap.rate - prevSnap.rate)
               : null;
             return {
-              doseIndex: n,
+              label: `Daily (#${n})`,
               dose: formatDiffObj(doseDiff, 'g'),
               rate: formatDiffObj(rateDiff, 'g/h')
             };
