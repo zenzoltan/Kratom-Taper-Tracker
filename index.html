@@ -9,13 +9,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#121212">
     <link rel="manifest" href="manifest.json">
-
     <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='120' fill='%23181818'/%3E%3Ccircle cx='256' cy='256' r='160' fill='none' stroke='%23333333' stroke-width='28'/%3E%3Ccircle cx='256' cy='256' r='160' fill='none' stroke='%234a90e2' stroke-width='28' stroke-dasharray='700' stroke-dashoffset='220' stroke-linecap='round'/%3E%3Ccircle cx='256' cy='256' r='36' fill='%23ffffff'/%3E%3C/svg%3E">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 
     <style>
       * {
         box-sizing: border-box;
         -webkit-tap-highlight-color: transparent;
+      }
+      [v-cloak] {
+        display: none;
       }
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -83,7 +86,6 @@
       .time-input {
         text-align: center;
       }
-
       .day-type-container {
         display: flex;
         margin-bottom: 12px;
@@ -111,7 +113,6 @@
         color: #ffffff;
         box-shadow: 0 1px 4px rgba(0,0,0,0.5);
       }
-
       .dose-container {
         margin: 10px 0 6px 0;
         background: #181818;
@@ -126,7 +127,6 @@
       .dose-container:active {
         background: #202020;
       }
-
       .dose-input {
         width: 100%;
         max-width: 160px;
@@ -145,12 +145,7 @@
         cursor: text;
         transition: box-shadow 0.2s;
       }
-      .dose-input:focus {
-        outline: none;
-      }
-
       .preview-box {
-        display: none;
         margin-top: 10px;
         padding: 8px 10px;
         background: #1e251e;
@@ -168,19 +163,6 @@
       .preview-item {
         font-weight: 600;
       }
-
-      #statusMsg {
-        font-size: 13px;
-        font-weight: 500;
-        text-align: center;
-        min-height: 20px;
-        margin: 6px 0;
-      }
-      .status-idle { color: transparent; }
-      .status-saving { color: #d1a153; }
-      .status-success { color: #7cb342; }
-      .status-error { color: #e57373; }
-
       .card {
         margin-top: 12px;
         background: #181818;
@@ -188,26 +170,6 @@
         border-radius: 12px;
         padding: 12px 14px;
       }
-      .card-header {
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 0.6px;
-        font-weight: 700;
-        color: #888;
-        margin-bottom: 8px;
-        padding-bottom: 6px;
-        border-bottom: none;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      }
-
-      .card-header-noborder {
-        border-bottom: none;
-        padding-bottom: 0px;
-        margin-bottom: 4px;
-      }
-
       .stat-row {
         display: flex;
         justify-content: space-between;
@@ -233,7 +195,6 @@
         text-align: center;
         padding: 8px 0;
       }
-
       .doses-table {
         width: 100%;
         border-collapse: collapse;
@@ -254,16 +215,11 @@
         font-size: 13px;
         text-align: center;
       }
-      .table-input:focus {
-        outline: none;
-      }
-
-      /* Modals */
       .modal-overlay {
         position: fixed;
         inset: 0;
         background: rgba(0, 0, 0, 0.78);
-        display: none;
+        display: flex;
         align-items: center;
         justify-content: center;
         z-index: 1000;
@@ -381,8 +337,6 @@
       .modal-save-btn:active {
         background: #333;
       }
-
-      /* Statistics Chart */
       .range-tabs {
         display: flex;
         background: #121212;
@@ -465,726 +419,323 @@
     </style>
   </head>
   <body>
-
-    <div class="top-row">
-      <div class="form-group" style="flex: 0 0 62px;">
-        <label for="sheetName">Profile</label>
-        <select id="sheetName" onchange="onProfileChange()">
-          <option value="Kori">Kori</option>
-          <option value="Zoli">Zoli</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label for="doseDate">Date</label>
-        <input type="date" id="doseDate" onchange="loadStats()" required>
-      </div>
-      <div class="form-group" style="flex: 0 0 58px;">
-        <label for="wakeTime">Wake</label>
-        <input 
-          type="text" 
-          id="wakeTime" 
-          class="time-input"
-          placeholder="07:00" 
-          maxlength="5" 
-          inputmode="numeric" 
-          enterkeyhint="done"
-          oninput="formatTimeInput(this)" 
-          onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
-          onblur="onWakeTimeBlur(this)"
-        >
-      </div>
-      <div class="form-group" style="flex: 0 0 58px;">
-        <label for="time">Time</label>
-        <input 
-          type="text" 
-          id="time" 
-          class="time-input"
-          placeholder="08:20" 
-          maxlength="5" 
-          inputmode="numeric" 
-          enterkeyhint="done"
-          oninput="onUserManualTimeInput(this)" 
-          onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
-          onblur="normalizeTimeField(this); onTimeChange();" 
-          required
-        >
-      </div>
-      <button type="button" class="settings-btn" onclick="openSettingsModal()" aria-label="Settings">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3"></circle>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-        </svg>
-      </button>
-    </div>
-
-    <div id="dayTypeContainer" class="day-type-container">
-      <button type="button" id="btnSzabadnap" class="day-type-btn active" onclick="setDayType('Szabadnap')">Off</button>
-      <button type="button" id="btnMunkanap" class="day-type-btn" onclick="setDayType('Munkanap')">Work</button>
-    </div>
-
-    <form id="mainDoseForm" onsubmit="event.preventDefault(); autoSubmit();" class="dose-container" onclick="handleDoseContainerClick(event)">
-      <input 
-        type="text" 
-        id="amount" 
-        class="dose-input" 
-        placeholder="0.00" 
-        inputmode="numeric" 
-        enterkeyhint="done"
-        onclick="event.stopPropagation();"
-        oninput="formatAmountInput(this); onUserTyping();"
-        onkeydown="handleKey(event)"
-        onblur="handleBlur()"
-      >
-      <div id="livePreviewBox" class="preview-box">
-        <div class="preview-grid">
-          <div>Total: <span id="prevTotal" class="preview-item">-</span></div>
-          <div>Diff: <span id="prevDiff" class="preview-item">-</span></div>
-          <div>Rate: <span id="prevRateDisplay" class="preview-item">-</span></div>
+    <div id="app" v-cloak>
+      <!-- Top Row -->
+      <div class="top-row">
+        <div class="form-group" style="flex: 0 0 62px;">
+          <label for="sheetName">Profile</label>
+          <select id="sheetName" v-model="sheetName" @change="onProfileChange">
+            <option value="Kori">Kori</option>
+            <option value="Zoli">Zoli</option>
+          </select>
         </div>
-      </div>
-    </form>
-
-    <div class="card">
-      <div id="summaryStatsContent">
-        <div class="loading">Loading...</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div id="editableDosesContent">
-        <div class="loading">Loading...</div>
-      </div>
-    </div>
-
-    <!-- Settings Modal -->
-    <div id="settingsModal" class="modal-overlay" onclick="if(event.target===this) closeSettingsModal();">
-      <div class="modal-box">
-        <div class="modal-header">
-          <span class="modal-title">Settings</span>
-          <button type="button" class="modal-close" onclick="closeSettingsModal()">×</button>
+        <div class="form-group">
+          <label for="doseDate">Date</label>
+          <input type="date" id="doseDate" v-model="doseDate" @change="loadStats" required>
         </div>
-
-        <div class="modal-section">
-          <div class="slider-header">
-            <label for="settingsDaysSlider" style="margin: 0;">Step every</label>
-            <span class="slider-value"><span id="settingsDaysVal">2</span> days</span>
-          </div>
-          <input 
-            type="range" 
-            id="settingsDaysSlider" 
-            class="settings-slider" 
-            min="1" 
-            max="10" 
-            step="1" 
-            value="2"
-            oninput="onSettingsSliderInput(this)"
+        <div class="form-group" style="flex: 0 0 58px;">
+          <label for="wakeTime">Wake</label>
+          <input
+            type="text"
+            id="wakeTime"
+            class="time-input"
+            placeholder="07:00"
+            maxlength="5"
+            inputmode="numeric"
+            enterkeyhint="done"
+            :value="wakeTime"
+            @input="onWakeInput"
+            @keydown.enter.prevent="$event.target.blur()"
+            @blur="onWakeBlur"
           >
         </div>
-
-        <div class="modal-inputs-row">
-          <div class="modal-input-block">
-            <label for="settingsMaxInput">Max (g)</label>
-            <input 
-              type="text" 
-              id="settingsMaxInput" 
-              class="modal-num-input" 
-              inputmode="numeric" 
-              enterkeyhint="done"
-              oninput="formatAmountInput(this)"
-              onkeydown="if(event.key==='Enter'){event.preventDefault(); saveSettingsModal();}"
-            >
-          </div>
-          <div class="modal-input-block">
-            <label for="settingsRateInput">Rate (g/h)</label>
-            <input 
-              type="text" 
-              id="settingsRateInput" 
-              class="modal-num-input" 
-              inputmode="numeric" 
-              enterkeyhint="done"
-              oninput="formatAmountInput(this)"
-              onkeydown="if(event.key==='Enter'){event.preventDefault(); saveSettingsModal();}"
-            >
-          </div>
+        <div class="form-group" style="flex: 0 0 58px;">
+          <label for="time">Time</label>
+          <input
+            type="text"
+            id="time"
+            class="time-input"
+            placeholder="08:20"
+            maxlength="5"
+            inputmode="numeric"
+            enterkeyhint="done"
+            :value="time"
+            @input="onManualTimeInput"
+            @keydown.enter.prevent="$event.target.blur()"
+            @blur="onTimeBlur"
+            required
+          >
         </div>
-
-        <button type="button" class="modal-secondary-btn" onclick="openStatsModal()">Statistics</button>
-        <button type="button" class="modal-save-btn" onclick="saveSettingsModal()">Save</button>
+        <button type="button" class="settings-btn" @click="openSettingsModal" aria-label="Settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
       </div>
-    </div>
 
-    <!-- Statistics Modal -->
-    <div id="statsModal" class="modal-overlay" onclick="if(event.target===this) closeStatsModal();">
-      <div class="modal-box modal-box-wide">
-        <div class="modal-header">
-          <span class="modal-title">Statistics</span>
-          <button type="button" class="modal-close" onclick="closeStatsModal()">×</button>
-        </div>
+      <!-- Day Type -->
+      <div v-if="sheetName === 'Kori'" class="day-type-container">
+        <button type="button" class="day-type-btn" :class="{ active: activeDayType === 'Szabadnap' }" @click="setDayType('Szabadnap')">Off</button>
+        <button type="button" class="day-type-btn" :class="{ active: activeDayType === 'Munkanap' }" @click="setDayType('Munkanap')">Work</button>
+      </div>
 
-        <div class="range-tabs">
-          <button type="button" id="metricBtnTotal" class="range-tab active" onclick="setStatsMetric('total')">Total (g)</button>
-          <button type="button" id="metricBtnRate" class="range-tab" onclick="setStatsMetric('rate')">Rate (g/h)</button>
-        </div>
-
-        <div class="range-tabs" style="margin-bottom: 12px;">
-          <button type="button" id="rangeBtn7" class="range-tab active" onclick="setStatsRange(7)">7 Days</button>
-          <button type="button" id="rangeBtn30" class="range-tab" onclick="setStatsRange(30)">1 Month</button>
-          <button type="button" id="rangeBtn90" class="range-tab" onclick="setStatsRange(90)">3 Months</button>
-        </div>
-
-        <div class="stats-summary-bar">
-          <div class="stats-summary-item"><span>Avg</span><strong id="statAvgVal">-</strong></div>
-          <div class="stats-summary-item"><span>Min</span><strong id="statMinVal">-</strong></div>
-          <div class="stats-summary-item"><span>Max</span><strong id="statMaxVal">-</strong></div>
-        </div>
-
-        <div id="statsChartContainer" class="chart-container">
-          <div class="chart-empty">Loading...</div>
-        </div>
-
-        <div class="stats-compare-box">
-          <div class="compare-row">
-            <span class="compare-label">Weekly</span>
-            <span class="compare-vals">
-              <span id="cmpWeekDose">-</span>
-              <span id="cmpWeekRate">-</span>
-            </span>
+      <!-- Main Dose Input -->
+      <form @submit.prevent="autoSubmit" class="dose-container" @click="handleDoseContainerClick">
+        <input
+          type="text"
+          id="amount"
+          class="dose-input"
+          placeholder="0.00"
+          inputmode="numeric"
+          enterkeyhint="done"
+          :value="amount"
+          :style="{ color: isAmountNegative ? '#ef5350' : '#ffffff' }"
+          @click.stop
+          @input="onAmountInput"
+          @keydown.enter.prevent="autoSubmit"
+          @blur="handleAmountBlur"
+        >
+        <div v-if="preview.visible" class="preview-box">
+          <div class="preview-grid">
+            <div>Total: <span class="preview-item">{{ preview.total }}</span></div>
+            <div>Diff: <span class="preview-item">{{ preview.diff }}</span></div>
+            <div>Rate: <span class="preview-item" :style="{ color: preview.rateColor }">{{ preview.rateText }}</span></div>
           </div>
-          <div class="compare-row">
-            <span class="compare-label">Monthly</span>
-            <span class="compare-vals">
-              <span id="cmpMonthDose">-</span>
-              <span id="cmpMonthRate">-</span>
-            </span>
+        </div>
+      </form>
+
+      <!-- Summary Card -->
+      <div class="card">
+        <div v-if="loading && !stats" class="loading">Loading...</div>
+        <div v-else-if="errorMsg && !stats" style="color: #e57373; font-size: 12px; padding: 8px;">{{ errorMsg }}</div>
+        <div v-else-if="!stats || !stats.found" style="color: #666; font-size: 12px; text-align: center; padding: 8px;">No entries for this day.</div>
+        <template v-else>
+          <div class="stat-row"><span class="stat-label">Elapsed</span><span class="stat-value">{{ liveElapsed }}</span></div>
+          <div class="stat-row"><span class="stat-label">Awake</span><span class="stat-value">{{ liveAwake }}</span></div>
+          <div class="stat-row"><span class="stat-label">Max</span><span class="stat-value">{{ currentCap.toFixed(2) }} g</span></div>
+          <div class="stat-row"><span class="stat-label">Total</span><span class="stat-value">{{ cleanDisplay(stats.dailyTotal) }}</span></div>
+          <div class="stat-row"><span class="stat-label">Average</span><span class="stat-value">{{ cleanDisplay(stats.avgDose) }}</span></div>
+          <div class="stat-row"><span class="stat-label">Interval</span><span class="stat-value">{{ cleanDisplay(stats.avgInterval) }}</span></div>
+        </template>
+      </div>
+
+      <!-- Entries Card -->
+      <div class="card">
+        <div v-if="loading && !stats" class="loading">Loading...</div>
+        <div v-else-if="!stats || !stats.found" style="color: #666; font-size: 12px; text-align: center; padding: 8px;">No data.</div>
+        <table v-else class="doses-table">
+          <tbody>
+            <tr v-for="item in tableDoses" :key="item.doseNumber">
+              <td style="color: #666; font-size: 12px; font-weight: 500; text-align: center; width: 34px; padding-left: 2px; padding-right: 6px;">{{ item.doseNumber }}</td>
+              <td style="width: 48%; padding-right: 4px;">
+                <input
+                  type="text"
+                  :id="'t_time_' + item.doseNumber"
+                  class="table-input"
+                  maxlength="5"
+                  inputmode="numeric"
+                  enterkeyhint="done"
+                  placeholder="00:00"
+                  :value="item.time"
+                  @input="onTableTimeInput($event, item)"
+                  @keydown.enter.prevent="$event.target.blur()"
+                  @blur="onTableTimeBlur(item)"
+                >
+              </td>
+              <td style="width: 48%; padding-left: 4px;">
+                <input
+                  type="text"
+                  :id="'t_amount_' + item.doseNumber"
+                  class="table-input"
+                  inputmode="numeric"
+                  enterkeyhint="done"
+                  placeholder="0.00"
+                  :value="item.amount"
+                  @input="onTableAmountInput($event, item)"
+                  @keydown="handleTableAmountKeydown($event, item)"
+                  @blur="triggerTableDoseSync(item)"
+                >
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Settings Modal -->
+      <div v-if="showSettingsModal" class="modal-overlay" @click.self="showSettingsModal = false">
+        <div class="modal-box">
+          <div class="modal-header">
+            <span class="modal-title">Settings</span>
+            <button type="button" class="modal-close" @click="showSettingsModal = false">×</button>
+          </div>
+
+          <div class="modal-section">
+            <div class="slider-header">
+              <label for="settingsDaysSlider" style="margin: 0;">Step every</label>
+              <span class="slider-value">{{ settingsForm.days }} days</span>
+            </div>
+            <input
+              type="range"
+              id="settingsDaysSlider"
+              class="settings-slider"
+              min="1"
+              max="10"
+              step="1"
+              v-model.number="settingsForm.days"
+            >
+          </div>
+
+          <div class="modal-inputs-row">
+            <div class="modal-input-block">
+              <label for="settingsMaxInput">Max (g)</label>
+              <input
+                type="text"
+                id="settingsMaxInput"
+                class="modal-num-input"
+                inputmode="numeric"
+                enterkeyhint="done"
+                :value="settingsForm.max"
+                @input="settingsForm.max = formatAmountStr($event.target.value)"
+                @keydown.enter.prevent="saveSettingsModal"
+              >
+            </div>
+            <div class="modal-input-block">
+              <label for="settingsRateInput">Rate (g/h)</label>
+              <input
+                type="text"
+                id="settingsRateInput"
+                class="modal-num-input"
+                inputmode="numeric"
+                enterkeyhint="done"
+                :value="settingsForm.rate"
+                @input="settingsForm.rate = formatAmountStr($event.target.value)"
+                @keydown.enter.prevent="saveSettingsModal"
+              >
+            </div>
+          </div>
+
+          <button type="button" class="modal-secondary-btn" @click="openStatsModal">Statistics</button>
+          <button type="button" class="modal-save-btn" @click="saveSettingsModal">Save</button>
+        </div>
+      </div>
+
+      <!-- Statistics Modal -->
+      <div v-if="showStatsModal" class="modal-overlay" @click.self="showStatsModal = false">
+        <div class="modal-box modal-box-wide">
+          <div class="modal-header">
+            <span class="modal-title">Statistics</span>
+            <button type="button" class="modal-close" @click="showStatsModal = false">×</button>
+          </div>
+
+          <div class="range-tabs">
+            <button type="button" class="range-tab" :class="{ active: activeStatsMetric === 'total' }" @click="activeStatsMetric = 'total'">Total (g)</button>
+            <button type="button" class="range-tab" :class="{ active: activeStatsMetric === 'rate' }" @click="activeStatsMetric = 'rate'">Rate (g/h)</button>
+          </div>
+
+          <div class="range-tabs" style="margin-bottom: 12px;">
+            <button type="button" class="range-tab" :class="{ active: activeStatsRange === 7 }" @click="activeStatsRange = 7">7 Days</button>
+            <button type="button" class="range-tab" :class="{ active: activeStatsRange === 30 }" @click="activeStatsRange = 30">1 Month</button>
+            <button type="button" class="range-tab" :class="{ active: activeStatsRange === 90 }" @click="activeStatsRange = 90">3 Months</button>
+          </div>
+
+          <div class="stats-summary-bar">
+            <div class="stats-summary-item"><span>Avg</span><strong>{{ chartStats.avg }}</strong></div>
+            <div class="stats-summary-item"><span>Min</span><strong>{{ chartStats.min }}</strong></div>
+            <div class="stats-summary-item"><span>Max</span><strong>{{ chartStats.max }}</strong></div>
+          </div>
+
+          <div class="chart-container">
+            <div v-if="historyLoading && chartData.points.length === 0" class="chart-empty">Loading...</div>
+            <div v-else-if="chartData.points.length === 0" class="chart-empty">No data in this period.</div>
+            <svg v-else viewBox="0 0 360 174" width="100%" height="100%" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="lineAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#64b5f6" stop-opacity="0.28"/>
+                  <stop offset="100%" stop-color="#64b5f6" stop-opacity="0.0"/>
+                </linearGradient>
+              </defs>
+              <line x1="38" y1="14" x2="348" y2="14" stroke="#222" stroke-width="1" />
+              <line x1="38" y1="82" x2="348" y2="82" stroke="#222" stroke-width="1" stroke-dasharray="3,3" />
+              <line x1="38" y1="150" x2="348" y2="150" stroke="#222" stroke-width="1" />
+
+              <text x="33" y="18" fill="#666" font-size="9" text-anchor="end">{{ chartData.yMaxLabel }}</text>
+              <text x="33" y="85" fill="#666" font-size="9" text-anchor="end">{{ chartData.yMidLabel }}</text>
+              <text x="33" y="153" fill="#666" font-size="9" text-anchor="end">{{ chartData.yMinLabel }}</text>
+
+              <text x="38" y="168" fill="#666" font-size="9" text-anchor="start">{{ chartData.firstDate }}</text>
+              <text v-if="chartData.midDate" x="193" y="168" fill="#666" font-size="9" text-anchor="middle">{{ chartData.midDate }}</text>
+              <text v-if="chartData.points.length > 1" x="348" y="168" fill="#666" font-size="9" text-anchor="end">{{ chartData.lastDate }}</text>
+
+              <polygon v-if="chartData.points.length > 1" :points="chartData.areaPoints" fill="url(#lineAreaGrad)" />
+              <polyline v-if="chartData.points.length > 1" :points="chartData.polyPoints" fill="none" stroke="#64b5f6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+              <circle v-for="(pt, idx) in chartData.dots" :key="idx" :cx="pt.x" :cy="pt.y" r="2.8" fill="#64b5f6" />
+            </svg>
+          </div>
+
+          <div class="stats-compare-box">
+            <div class="compare-row">
+              <span class="compare-label">Weekly</span>
+              <span class="compare-vals">
+                <span :style="{ color: comparisons.week.dose.color }">{{ comparisons.week.dose.text }}</span>
+                <span :style="{ color: comparisons.week.rate.color }">{{ comparisons.week.rate.text }}</span>
+              </span>
+            </div>
+            <div class="compare-row">
+              <span class="compare-label">Monthly</span>
+              <span class="compare-vals">
+                <span :style="{ color: comparisons.month.dose.color }">{{ comparisons.month.dose.text }}</span>
+                <span :style="{ color: comparisons.month.rate.color }">{{ comparisons.month.rate.text }}</span>
+              </span>
+            </div>
           </div>
         </div>
       </div>
     </div>
 
     <script>
+      const { createApp, ref, reactive, computed, onMounted } = Vue;
       const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwLunA0503U9F0PElqt4IXJ7e2OFIFURAZVApI8IUuVafVlDA65Ijk6zxcRORWC8X0/exec";
-      var isSaving = false;
-      var lastRecordedTimeStr = null;
-      var currentStatsData = null;
-      var isUserModified = false;
-      var isManualTimeSet = false;
-      var activeDayType = 'Szabadnap';
-      var lastRawRecommendation = null;
-      var activeStatsRange = 7;
-      var activeStatsMetric = 'total';
-      var fullHistoryPoints = [];
-      
-      window.liveRateParams = null; 
-      window.currentTypingRate = null;
 
       function getTodayDateStr() {
-        var today = new Date();
-        var yyyy = today.getFullYear();
-        var mm = String(today.getMonth() + 1).padStart(2, '0');
-        var dd = String(today.getDate()).padStart(2, '0');
-        return yyyy + '-' + mm + '-' + dd;
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       }
 
       function getDateStrOffset(daysAgo) {
-        var d = new Date();
+        const d = new Date();
         d.setDate(d.getDate() - daysAgo);
-        var yyyy = d.getFullYear();
-        var mm = String(d.getMonth() + 1).padStart(2, '0');
-        var dd = String(d.getDate()).padStart(2, '0');
-        return yyyy + '-' + mm + '-' + dd;
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       }
 
-      function getStepDays() {
-        var sheetKey = document.getElementById('sheetName') ? document.getElementById('sheetName').value : 'Kori';
-        var saved = localStorage.getItem('taper_step_days_v1_' + sheetKey);
-        var days = parseInt(saved, 10);
-        if (isNaN(days) || days < 1 || days > 10) return 2;
-        return days;
+      function getParsedAmount(rawVal) {
+        if (!rawVal) return 0;
+        const num = parseFloat(String(rawVal).replace(',', '.').trim());
+        return isNaN(num) ? 0 : num;
       }
 
-      function getDoseCap(dateStr) {
-        var sheetKey = document.getElementById('sheetName') ? document.getElementById('sheetName').value : 'Kori';
-        var savedCustomCap = localStorage.getItem('taper_custom_cap_anchor_v1_' + sheetKey);
-        var stepDays = getStepDays();
-
-        var baseDate = new Date(2026, 10, 10);
-        var baseCap = 3.67;
-
-        if (savedCustomCap) {
-          try {
-            var parsed = JSON.parse(savedCustomCap);
-            if (parsed && parsed.dateStr && !isNaN(parseFloat(parsed.cap))) {
-              var bp = parsed.dateStr.split('-');
-              if (bp.length === 3) {
-                baseDate = new Date(parseInt(bp[0], 10), parseInt(bp[1], 10) - 1, parseInt(bp[2], 10));
-                baseCap = parseFloat(parsed.cap);
-              }
-            }
-          } catch(e) {}
-        }
-
-        var parts = (dateStr || '').split('-');
-        if (parts.length === 3) {
-          var cur = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-          var diffDays = Math.floor((cur.getTime() - baseDate.getTime()) / (1000 * 60 * 60 * 24));
-          var steps = Math.floor(diffDays / stepDays);
-          return Math.max(0.1, parseFloat((baseCap - (steps * 0.01)).toFixed(2)));
-        }
-        return baseCap;
-      }
-
-      function getRecommendationRate(dateStr) {
-        var sheetKey = document.getElementById('sheetName') ? document.getElementById('sheetName').value : 'Kori';
-        var savedCustom = localStorage.getItem('taper_custom_rate_anchor_v1_' + sheetKey);
-        var stepDays = getStepDays();
-        
-        var baseDate = new Date(2026, 10, 18);
-        var baseRate = 1.19;
-
-        if (savedCustom) {
-          try {
-            var parsed = JSON.parse(savedCustom);
-            if (parsed && parsed.dateStr && !isNaN(parseFloat(parsed.rate))) {
-              var bp = parsed.dateStr.split('-');
-              if (bp.length === 3) {
-                baseDate = new Date(parseInt(bp[0], 10), parseInt(bp[1], 10) - 1, parseInt(bp[2], 10));
-                baseRate = parseFloat(parsed.rate);
-              }
-            }
-          } catch(e) {}
-        }
-
-        var parts = (dateStr || '').split('-');
-        if (parts.length === 3) {
-          var curDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-          var diffDays = Math.floor((curDate.getTime() - baseDate.getTime()) / (1000 * 60 * 60 * 24));
-          var steps = Math.floor(diffDays / stepDays);
-          return Math.max(0.1, parseFloat((baseRate - (steps * 0.01)).toFixed(2)));
-        }
-        return baseRate;
-      }
-
-      function openSettingsModal() {
-        var dateVal = document.getElementById('doseDate').value;
-        var days = getStepDays();
-        document.getElementById('settingsDaysSlider').value = days;
-        document.getElementById('settingsDaysVal').innerText = days;
-        document.getElementById('settingsMaxInput').value = getDoseCap(dateVal).toFixed(2);
-        document.getElementById('settingsRateInput').value = getRecommendationRate(dateVal).toFixed(2);
-        document.getElementById('settingsModal').style.display = 'flex';
-      }
-
-      function closeSettingsModal() {
-        document.getElementById('settingsModal').style.display = 'none';
-      }
-
-      function onSettingsSliderInput(el) {
-        var val = Math.round(parseInt(el.value, 10));
-        if (isNaN(val) || val < 1) val = 1;
-        if (val > 10) val = 10;
-        el.value = val;
-        document.getElementById('settingsDaysVal').innerText = val;
-      }
-
-      function saveSettingsModal() {
-        var sheetKey = document.getElementById('sheetName').value;
-        var dateVal = document.getElementById('doseDate').value;
-
-        var days = Math.round(parseInt(document.getElementById('settingsDaysSlider').value, 10));
-        if (isNaN(days) || days < 1) days = 1;
-        if (days > 10) days = 10;
-        localStorage.setItem('taper_step_days_v1_' + sheetKey, String(days));
-
-        var maxVal = getParsedAmount(document.getElementById('settingsMaxInput').value);
-        if (maxVal > 0) {
-          localStorage.setItem('taper_custom_cap_anchor_v1_' + sheetKey, JSON.stringify({
-            dateStr: dateVal,
-            cap: parseFloat(maxVal.toFixed(2))
-          }));
-        }
-
-        var rateVal = getParsedAmount(document.getElementById('settingsRateInput').value);
-        if (rateVal > 0) {
-          localStorage.setItem('taper_custom_rate_anchor_v1_' + sheetKey, JSON.stringify({
-            dateStr: dateVal,
-            rate: parseFloat(rateVal.toFixed(2))
-          }));
-        }
-
-        window.liveRateParams = null;
-        closeSettingsModal();
-
-        if (currentStatsData) {
-          updateUpperCardsOnly(currentStatsData);
-          if (!isUserModified) {
-            applyDoseRecommendation(currentStatsData);
-          } else {
-            onTimeOrAmountInput();
-          }
-        }
-      }
-
-      /* --- STATISTICS MODAL & LINE CHART --- */
-      function openStatsModal() {
-        closeSettingsModal();
-        document.getElementById('statsModal').style.display = 'flex';
-        fetchFullHistoryAndRender();
-      }
-
-      function closeStatsModal() {
-        document.getElementById('statsModal').style.display = 'none';
-      }
-
-      function setStatsMetric(metric) {
-        activeStatsMetric = metric;
-        document.getElementById('metricBtnTotal').className = 'range-tab' + (metric === 'total' ? ' active' : '');
-        document.getElementById('metricBtnRate').className = 'range-tab' + (metric === 'rate' ? ' active' : '');
-        renderStatsForRange(activeStatsRange);
-      }
-
-      function setStatsRange(days) {
-        activeStatsRange = days;
-        document.getElementById('rangeBtn7').className = 'range-tab' + (days === 7 ? ' active' : '');
-        document.getElementById('rangeBtn30').className = 'range-tab' + (days === 30 ? ' active' : '');
-        document.getElementById('rangeBtn90').className = 'range-tab' + (days === 90 ? ' active' : '');
-        renderStatsForRange(days);
-      }
-
-      function parseRateNumber(raw) {
-        if (raw === null || raw === undefined) return null;
-        var s = String(raw).replace(/,/g, '.').replace(/[^0-9.]/g, '');
-        var n = parseFloat(s);
-        return (!isNaN(n) && n > 0) ? n : null;
-      }
-
-      function computeDayRateFromCache(parsed) {
-        if (!parsed) return null;
-        var direct = parseRateNumber(parsed.dailyRate || parsed.avgRate || (parsed.lastDose && parsed.lastDose.rate));
-        if (direct) return direct;
-        if (parsed.allDoses && parsed.allDoses.length > 1) {
-          var valid = parsed.allDoses.filter(function(d) {
-            return d.hasData && getParsedAmount(d.amount) > 0 && d.time;
-          });
-          if (valid.length >= 2) {
-            var firstM = parseTimeToMinutes(valid[0].time);
-            var lastM = parseTimeToMinutes(valid[valid.length - 1].time);
-            if (firstM !== null && lastM !== null) {
-              var diffM = lastM - firstM;
-              if (diffM <= 0) diffM += 1440;
-              if (diffM > 0) {
-                var sumAfterFirst = 0;
-                for (var i = 1; i < valid.length; i++) {
-                  sumAfterFirst += getParsedAmount(valid[i].amount);
-                }
-                return sumAfterFirst / (diffM / 60);
-              }
-            }
-          }
-        }
-        return null;
-      }
-
-      function getLocalCachedHistory(sheetName) {
-        var todayStr = getTodayDateStr();
-        var cutoffStr = getDateStrOffset(95);
-        var prefix = 'taper_fast_cache_v24_' + sheetName + '_';
-        var results = [];
-
-        for (var i = 0; i < localStorage.length; i++) {
-          var key = localStorage.key(i);
-          if (key && key.indexOf(prefix) === 0) {
-            var dStr = key.substring(prefix.length);
-            if (dStr <= todayStr && dStr >= cutoffStr) {
-              try {
-                var parsed = JSON.parse(localStorage.getItem(key));
-                if (parsed && parsed.found && parsed.dailyTotal) {
-                  var tot = parseFloat(String(parsed.dailyTotal).replace(' g', '').replace(',', '.').trim());
-                  var doseCount = 0;
-                  if (parsed.allDoses) {
-                    doseCount = parsed.allDoses.filter(function(d) {
-                      return d.hasData && getParsedAmount(d.amount) > 0;
-                    }).length;
-                  } else if (parsed.totalDoses) {
-                    doseCount = parseInt(parsed.totalDoses, 10) || 0;
-                  }
-
-                  if (dStr === todayStr && doseCount < 6) continue;
-                  if (dStr <= '2026-11-22' && tot < 13) continue;
-                  if (!isNaN(tot) && tot > 0) {
-                    results.push({
-                      date: dStr,
-                      total: tot,
-                      rate: computeDayRateFromCache(parsed),
-                      count: doseCount
-                    });
-                  }
-                }
-              } catch(e) {}
-            }
-          }
-        }
-        results.sort(function(a, b) { return a.date.localeCompare(b.date); });
-        return results;
-      }
-
-      function fetchFullHistoryAndRender() {
-        var sheetName = document.getElementById('sheetName').value;
-        var todayStr = getTodayDateStr();
-        var container = document.getElementById('statsChartContainer');
-
-        fullHistoryPoints = getLocalCachedHistory(sheetName);
-        if (fullHistoryPoints.length > 0) {
-          setStatsRange(activeStatsRange);
-          renderComparisons(fullHistoryPoints);
-        } else {
-          container.innerHTML = '<div class="chart-empty">Loading...</div>';
-        }
-
-        callApi({
-          action: 'getHistory',
-          sheetName: sheetName,
-          days: 90
-        }, function(res) {
-          if (res && res.success && Array.isArray(res.history)) {
-            var filtered = res.history
-              .filter(function(item) {
-                if (!item.date || item.date > todayStr) return false;
-                var tot = parseFloat(item.total);
-                if (isNaN(tot) || tot <= 0) return false;
-                var cnt = parseInt(item.count, 10) || 0;
-                if (item.date === todayStr && cnt < 6) return false;
-                if (item.date <= '2026-11-22' && tot < 13) return false;
-                return true;
-              })
-              .map(function(item) {
-                return {
-                  date: item.date,
-                  total: parseFloat(item.total),
-                  rate: parseRateNumber(item.rate),
-                  count: parseInt(item.count, 10) || 0
-                };
-              })
-              .sort(function(a, b) { return a.date.localeCompare(b.date); });
-
-            if (filtered.length > 0) {
-              fullHistoryPoints = filtered;
-              setStatsRange(activeStatsRange);
-              renderComparisons(fullHistoryPoints);
-              return;
-            }
-          }
-          if (fullHistoryPoints.length === 0) {
-            renderLineChart([]);
-            renderComparisons([]);
-          }
-        }, function() {
-          if (fullHistoryPoints.length === 0) {
-            renderLineChart([]);
-            renderComparisons([]);
-          }
-        });
-      }
-
-      function renderStatsForRange(days) {
-        var cutoffStr = getDateStrOffset(days);
-        var slice = fullHistoryPoints.filter(function(p) {
-          return p.date >= cutoffStr;
-        });
-        renderLineChart(slice);
-      }
-
-      function formatDiffHtml(diff, unit) {
-        if (diff === null || isNaN(diff)) return '<span style="color:#666;">-</span>';
-        var sign = diff > 0 ? '+' : '';
-        var color = diff > 0.005 ? '#ef5350' : (diff < -0.005 ? '#81c784' : '#aaa');
-        return `<span style="color:${color};">${sign}${diff.toFixed(2)} ${unit}</span>`;
-      }
-
-      function calcPeriodComparison(points, windowDays) {
-        var todayStr = getTodayDateStr();
-        var hasToday = points.some(function(p) { return p.date === todayStr; });
-        var curEndOffset = hasToday ? 0 : 1;
-        var curStartStr = getDateStrOffset(curEndOffset + windowDays - 1);
-        var curEndStr = getDateStrOffset(curEndOffset);
-        var prevStartStr = getDateStrOffset(curEndOffset + windowDays * 2 - 1);
-        var prevEndStr = getDateStrOffset(curEndOffset + windowDays);
-
-        var curPts = points.filter(function(p) { return p.date >= curStartStr && p.date <= curEndStr; });
-        var prevPts = points.filter(function(p) { return p.date >= prevStartStr && p.date <= prevEndStr; });
-
-        var doseDiff = null;
-        if (curPts.length > 0 && prevPts.length > 0) {
-          var curAvg = curPts.reduce(function(s, p) { return s + p.total; }, 0) / curPts.length;
-          var prevAvg = prevPts.reduce(function(s, p) { return s + p.total; }, 0) / prevPts.length;
-          doseDiff = curAvg - prevAvg;
-        }
-
-        var curRates = curPts.filter(function(p) { return p.rate !== null; });
-        var prevRates = prevPts.filter(function(p) { return p.rate !== null; });
-        var rateDiff = null;
-        if (curRates.length > 0 && prevRates.length > 0) {
-          var curRateAvg = curRates.reduce(function(s, p) { return s + p.rate; }, 0) / curRates.length;
-          var prevRateAvg = prevRates.reduce(function(s, p) { return s + p.rate; }, 0) / prevRates.length;
-          rateDiff = curRateAvg - prevRateAvg;
-        }
-
-        return { doseDiff: doseDiff, rateDiff: rateDiff };
-      }
-
-      function renderComparisons(points) {
-        var week = calcPeriodComparison(points, 7);
-        var month = calcPeriodComparison(points, 30);
-
-        document.getElementById('cmpWeekDose').innerHTML = formatDiffHtml(week.doseDiff, 'g');
-        document.getElementById('cmpWeekRate').innerHTML = formatDiffHtml(week.rateDiff, 'g/h');
-        document.getElementById('cmpMonthDose').innerHTML = formatDiffHtml(month.doseDiff, 'g');
-        document.getElementById('cmpMonthRate').innerHTML = formatDiffHtml(month.rateDiff, 'g/h');
-      }
-
-      function renderLineChart(rawPoints) {
-        var container = document.getElementById('statsChartContainer');
-        var avgEl = document.getElementById('statAvgVal');
-        var minEl = document.getElementById('statMinVal');
-        var maxEl = document.getElementById('statMaxVal');
-
-        var isRate = (activeStatsMetric === 'rate');
-        var unit = isRate ? 'g/h' : 'g';
-
-        var points = (rawPoints || []).filter(function(p) {
-          return isRate ? (p.rate !== null && p.rate > 0) : (p.total > 0);
-        });
-
-        if (points.length === 0) {
-          avgEl.innerText = '-';
-          minEl.innerText = '-';
-          maxEl.innerText = '-';
-          container.innerHTML = '<div class="chart-empty">No data in this period.</div>';
-          return;
-        }
-
-        var vals = points.map(function(p) { return isRate ? p.rate : p.total; });
-        var sum = vals.reduce(function(a, b) { return a + b; }, 0);
-        var avg = sum / vals.length;
-        var minVal = Math.min.apply(null, vals);
-        var maxVal = Math.max.apply(null, vals);
-
-        avgEl.innerText = avg.toFixed(2) + ' ' + unit;
-        minEl.innerText = minVal.toFixed(2) + ' ' + unit;
-        maxEl.innerText = maxVal.toFixed(2) + ' ' + unit;
-
-        var W = 360;
-        var H = 174;
-        var padL = 38;
-        var padR = 12;
-        var padT = 14;
-        var padB = 24;
-        var plotW = W - padL - padR;
-        var plotH = H - padT - padB;
-
-        var yMin = minVal;
-        var yMax = maxVal;
-        if (yMax === yMin) {
-          var stepPad = isRate ? 0.1 : 1;
-          yMin = Math.max(0, yMin - stepPad);
-          yMax = yMax + stepPad;
-        } else {
-          var margin = (yMax - yMin) * 0.12;
-          yMin = Math.max(0, yMin - margin);
-          yMax = yMax + margin;
-        }
-
-        function getX(idx) {
-          if (points.length === 1) return padL + plotW / 2;
-          return padL + (idx / (points.length - 1)) * plotW;
-        }
-        function getY(val) {
-          return padT + plotH - ((val - yMin) / (yMax - yMin)) * plotH;
-        }
-
-        var polyPoints = [];
-        var dotsHtml = '';
-        for (var i = 0; i < points.length; i++) {
-          var cx = getX(i).toFixed(1);
-          var cy = getY(vals[i]).toFixed(1);
-          polyPoints.push(cx + ',' + cy);
-          if (points.length <= 31) {
-            dotsHtml += `<circle cx="${cx}" cy="${cy}" r="2.8" fill="#64b5f6" />`;
-          }
-        }
-
-        var areaPoints = polyPoints.slice();
-        var lastX = getX(points.length - 1).toFixed(1);
-        var firstX = getX(0).toFixed(1);
-        var baseY = (padT + plotH).toFixed(1);
-        areaPoints.push(lastX + ',' + baseY);
-        areaPoints.push(firstX + ',' + baseY);
-
-        var midY = (padT + plotH / 2).toFixed(1);
-        var dec = isRate ? 2 : 1;
-        var midVal = ((yMin + yMax) / 2).toFixed(dec);
-
-        var firstDateLabel = points[0].date.substring(5);
-        var lastDateLabel = points[points.length - 1].date.substring(5);
-        var midDateLabel = points.length > 2 ? points[Math.floor(points.length / 2)].date.substring(5) : '';
-
-        var svg = `
-          <svg viewBox="0 0 ${W} ${H}" width="100%" height="100%" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="lineAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#64b5f6" stop-opacity="0.28"/>
-                <stop offset="100%" stop-color="#64b5f6" stop-opacity="0.0"/>
-              </linearGradient>
-            </defs>
-
-            <line x1="${padL}" y1="${padT}" x2="${W - padR}" y2="${padT}" stroke="#222" stroke-width="1" />
-            <line x1="${padL}" y1="${midY}" x2="${W - padR}" y2="${midY}" stroke="#222" stroke-width="1" stroke-dasharray="3,3" />
-            <line x1="${padL}" y1="${baseY}" x2="${W - padR}" y2="${baseY}" stroke="#222" stroke-width="1" />
-
-            <text x="${padL - 5}" y="${padT + 4}" fill="#666" font-size="9" text-anchor="end">${yMax.toFixed(dec)}</text>
-            <text x="${padL - 5}" y="${parseFloat(midY) + 3}" fill="#666" font-size="9" text-anchor="end">${midVal}</text>
-            <text x="${padL - 5}" y="${parseFloat(baseY) + 3}" fill="#666" font-size="9" text-anchor="end">${yMin.toFixed(dec)}</text>
-
-            <text x="${padL}" y="${H - 6}" fill="#666" font-size="9" text-anchor="start">${firstDateLabel}</text>
-            ${midDateLabel ? `<text x="${(padL + plotW / 2).toFixed(1)}" y="${H - 6}" fill="#666" font-size="9" text-anchor="middle">${midDateLabel}</text>` : ''}
-            ${points.length > 1 ? `<text x="${W - padR}" y="${H - 6}" fill="#666" font-size="9" text-anchor="end">${lastDateLabel}</text>` : ''}
-
-            ${points.length > 1 ? `<polygon points="${areaPoints.join(' ')}" fill="url(#lineAreaGrad)" />` : ''}
-            ${points.length > 1 ? `<polyline points="${polyPoints.join(' ')}" fill="none" stroke="#64b5f6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />` : ''}
-            ${dotsHtml}
-          </svg>
-        `;
-
-        container.innerHTML = svg;
+      function parseTimeToMinutes(timeStr) {
+        if (!timeStr || timeStr.indexOf(':') === -1) return null;
+        const [h, m] = timeStr.split(':').map(v => parseInt(v, 10));
+        return (isNaN(h) || isNaN(m)) ? null : h * 60 + m;
       }
 
       function buildSmartTimeDigits(rawVal) {
-        var rawDigits = String(rawVal || '').replace(/[^0-9]/g, '');
-        var out = '';
-        for (var i = 0; i < rawDigits.length; i++) {
-          var d = rawDigits[i];
-          var len = out.length;
+        const rawDigits = String(rawVal || '').replace(/[^0-9]/g, '');
+        let out = '';
+        for (let i = 0; i < rawDigits.length; i++) {
+          const d = rawDigits[i];
+          const len = out.length;
           if (len === 0) {
-            if (d >= '3' && d <= '9') {
-              out += '0' + d;
-            } else {
-              out += d;
-            }
+            out += (d >= '3' && d <= '9') ? ('0' + d) : d;
           } else if (len === 1) {
             if (out[0] === '2' && d >= '4') {
-              if (d >= '6') {
-                out = '020' + d;
-              } else {
-                out = '02' + d;
-              }
+              out = (d >= '6') ? ('020' + d) : ('02' + d);
             } else {
               out += d;
             }
           } else if (len === 2) {
-            if (d >= '6' && d <= '9') {
-              out += '0' + d;
-            } else {
-              out += d;
-            }
+            out += (d >= '6' && d <= '9') ? ('0' + d) : d;
           } else if (len === 3) {
             out += d;
           }
@@ -1193,1202 +744,903 @@
         return out.substring(0, 4);
       }
 
-      function formatTimeInput(el) {
-        var digits = buildSmartTimeDigits(el.value);
-        if (digits.length >= 3) {
-          el.value = digits.substring(0, 2) + ':' + digits.substring(2, 4);
-        } else {
-          el.value = digits;
-        }
+      function formatTimeStr(rawVal) {
+        const digits = buildSmartTimeDigits(rawVal);
+        return digits.length >= 3 ? `${digits.substring(0, 2)}:${digits.substring(2, 4)}` : digits;
       }
 
-      function onTableTimeInputAuto(el, doseNum) {
-        var digits = buildSmartTimeDigits(el.value);
-        if (digits.length >= 3) {
-          el.value = digits.substring(0, 2) + ':' + digits.substring(2, 4);
-        } else {
-          el.value = digits;
-        }
-
-        if (digits.length >= 4) {
-          var aEl = document.getElementById('t_amount_' + doseNum);
-          if (aEl) {
-            setTimeout(function() {
-              aEl.focus();
-              aEl.select();
-            }, 30);
-          }
-        }
-      }
-
-      function onUserManualTimeInput(el) {
-        isManualTimeSet = true;
-        formatTimeInput(el);
-        onTimeChange();
-      }
-
-      function normalizeTimeField(el) {
-        var val = el.value.trim();
-        if (!val) return;
-        var digits = buildSmartTimeDigits(val);
+      function normalizeTimeStr(rawVal) {
+        const val = String(rawVal || '').trim();
+        if (!val) return '';
+        const digits = buildSmartTimeDigits(val);
         if (digits.length === 1 || digits.length === 2) {
-          var h = parseInt(digits, 10);
-          el.value = (h < 10 ? '0' + h : h) + ':00';
-        } else if (digits.length === 3) {
-          el.value = digits.substring(0, 2) + ':0' + digits.substring(2, 3);
-        } else if (digits.length >= 4) {
-          el.value = digits.substring(0, 2) + ':' + digits.substring(2, 4);
+          const h = parseInt(digits, 10);
+          return (h < 10 ? '0' + h : h) + ':00';
         }
+        if (digits.length === 3) return `${digits.substring(0, 2)}:0${digits.substring(2, 3)}`;
+        return `${digits.substring(0, 2)}:${digits.substring(2, 4)}`;
       }
 
-      function onWakeTimeBlur(el) {
-        normalizeTimeField(el);
-        updateLiveAwakeTime();
-        onWakeTimeChange();
+      function formatAmountStr(rawVal) {
+        const raw = String(rawVal || '').replace(',', '.');
+        const isNeg = raw.startsWith('-');
+        const digits = raw.replace(/[^0-9]/g, '');
+        if (!digits) return isNeg ? '-' : '';
+        const formatted = digits.length === 1 ? digits : `${digits.substring(0, 1)}.${digits.substring(1, 3)}`;
+        return (isNeg ? '-' : '') + formatted;
       }
 
-      function formatAmountInput(el) {
-        var raw = el.value.replace(',', '.');
-        var isNeg = raw.startsWith('-');
-        var digits = raw.replace(/[^0-9]/g, '');
-        if (!digits) {
-          el.value = isNeg ? '-' : '';
-          return;
-        }
-        var formatted = '';
-        if (digits.length === 1) {
-          formatted = digits;
-        } else {
-          formatted = digits.substring(0, 1) + '.' + digits.substring(1, 3);
-        }
-        el.value = (isNeg ? '-' : '') + formatted;
-      }
-
-      function cleanDisplay(str) {
-        if (!str) return '-';
-        return String(str).replace(/,/g, '.').replace(/g\/óra/g, '').replace(/g\/ó/g, '').replace(/g\/h/g, '').trim();
+      function parseRateNumber(raw) {
+        if (raw === null || raw === undefined) return null;
+        const n = parseFloat(String(raw).replace(/,/g, '.').replace(/[^0-9.]/g, ''));
+        return (!isNaN(n) && n > 0) ? n : null;
       }
 
       function callApi(params, onSuccess, onError) {
         const callbackName = 'jsonp_cb_' + Math.round(100000 * Math.random());
-        window[callbackName] = function(data) {
+        const script = document.createElement('script');
+        window[callbackName] = (data) => {
           delete window[callbackName];
-          if (script && script.parentNode) script.parentNode.removeChild(script);
+          if (script.parentNode) script.parentNode.removeChild(script);
           onSuccess(data);
         };
-
-        const queryParams = Object.keys(params)
-          .map(k => encodeURIComponent(k) + '=' + encodeURIComponent(params[k]))
-          .join('&');
-
-        const script = document.createElement('script');
-        script.src = `${APPS_SCRIPT_URL}?${queryParams}&callback=${callbackName}&_ts=${Date.now()}`;
-        script.onerror = function() {
+        const query = Object.keys(params).map(k => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`).join('&');
+        script.src = `${APPS_SCRIPT_URL}?${query}&callback=${callbackName}&_ts=${Date.now()}`;
+        script.onerror = () => {
           delete window[callbackName];
-          if (script && script.parentNode) script.parentNode.removeChild(script);
+          if (script.parentNode) script.parentNode.removeChild(script);
           if (onError) onError(new Error("Failed to reach server"));
         };
         document.body.appendChild(script);
       }
 
-      window.onload = function() {
-        var savedProfile = localStorage.getItem('taper_active_profile');
-        if (!savedProfile) {
-          savedProfile = 'Kori';
-        }
-        var profileSelect = document.getElementById('sheetName');
-        if (profileSelect) {
-          profileSelect.value = savedProfile;
-        }
-
-        updateDayTypeVisibility(savedProfile);
-        resetDateTime();
-        loadStats();
-
-        setInterval(syncClockToLiveTime, 1000);
-        setInterval(updateLiveElapsedTime, 5000);
-      };
-
-      function syncClockToLiveTime() {
-        if (isManualTimeSet || document.activeElement === document.getElementById('time')) return;
-
-        var now = new Date();
-        var currentFormattedTime = now.toTimeString().substring(0, 5);
-        var timeInput = document.getElementById('time');
-
-        if (timeInput && timeInput.value !== currentFormattedTime) {
-          timeInput.value = currentFormattedTime;
-          updateLiveAwakeTime();
-          if (!isUserModified && currentStatsData) {
-            applyDoseRecommendation(currentStatsData);
-          } else {
-            onTimeOrAmountInput();
-          }
-        }
-      }
-
-      function updateDayTypeVisibility(profile) {
-        var container = document.getElementById('dayTypeContainer');
-        if (container) {
-          if (profile === 'Kori') {
-            container.style.display = 'flex';
-          } else {
-            container.style.display = 'none';
-          }
-        }
-      }
-
-      function onProfileChange() {
-        var profile = document.getElementById('sheetName').value;
-        localStorage.setItem('taper_active_profile', profile);
-
-        updateDayTypeVisibility(profile);
-
-        currentStatsData = null;
-        isUserModified = false;
-        isManualTimeSet = false;
-        lastRawRecommendation = null;
-        window.liveRateParams = null;
-        window.currentTypingRate = null;
-        
-        var previewBox = document.getElementById('livePreviewBox');
-        if (previewBox) previewBox.style.display = 'none';
-        
-        var amountInput = document.getElementById('amount');
-        if (amountInput) amountInput.value = '';
-
-        loadStats();
-      }
-
-      function setDayType(type) {
-        activeDayType = type;
-        document.getElementById('btnSzabadnap').className = 'day-type-btn' + (type === 'Szabadnap' ? ' active' : '');
-        document.getElementById('btnMunkanap').className = 'day-type-btn' + (type === 'Munkanap' ? ' active' : '');
-
-        var sheetName = document.getElementById('sheetName').value;
-        var dateStr = document.getElementById('doseDate').value;
-
-        callApi({
-          action: 'saveDayType',
-          sheetName: sheetName,
-          dateStr: dateStr,
-          dayType: type
-        }, function(res) {
-          if (res && res.success) {
-            saveToLocalCache(sheetName, dateStr, res.stats);
-            renderAllStats(res.stats);
-          }
-        }, function(err) {});
-      }
-
-      function resetDateTime() {
-        var today = new Date();
-        document.getElementById('doseDate').value = getTodayDateStr();
-        document.getElementById('time').value = today.toTimeString().substring(0, 5);
-        isManualTimeSet = false;
-      }
-
-      function handleDoseContainerClick(event) {
-        var amountEl = document.getElementById('amount');
-        if (event.target === amountEl) return;
-
-        var amountVal = getParsedAmount(amountEl.value);
-        if (amountVal > 0 && !isSaving) {
-          autoSubmit();
-        }
-      }
-
-      function handleKey(e) {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          autoSubmit();
-        }
-      }
-
-      function handleBlur() {
-        setTimeout(function() {
-          var amountEl = document.getElementById('amount');
-          var rawVal = amountEl ? amountEl.value.trim() : '';
-          var val = getParsedAmount(rawVal);
-          if (val > 0 && !isSaving && isUserModified) {
-            autoSubmit();
-          }
-        }, 150);
-      }
-
-      function onUserTyping() {
-        isUserModified = true;
-        onTimeOrAmountInput();
-      }
-
-      function onTimeChange() {
-        updateLiveAwakeTime();
-        if (!isUserModified && currentStatsData) {
-          applyDoseRecommendation(currentStatsData);
-        } else {
-          onTimeOrAmountInput();
-        }
-      }
-
-      function getParsedAmount(rawVal) {
-        if (!rawVal) return 0;
-        var normalized = String(rawVal).replace(',', '.').trim();
-        var num = parseFloat(normalized);
-        return isNaN(num) ? 0 : num;
-      }
-
-      function parseTimeToMinutes(timeStr) {
-        if (!timeStr || timeStr.indexOf(':') === -1) return null;
-        var parts = timeStr.split(':');
-        var h = parseInt(parts[0], 10);
-        var m = parseInt(parts[1], 10);
-        if (isNaN(h) || isNaN(m)) return null;
-        return h * 60 + m;
-      }
-
-      function getAwakeHoursToNow() {
-        var wakeVal = document.getElementById('wakeTime').value.trim();
-        var curVal = document.getElementById('time').value.trim();
-
-        var wakeM = parseTimeToMinutes(wakeVal);
-        var curM = parseTimeToMinutes(curVal);
-
-        if (wakeM === null || curM === null) return null;
-
-        var diff = curM - wakeM;
-        if (diff <= 0) diff += 1440;
-        return diff / 60;
-      }
-
-      function applyDoseRecommendation(data) {
-        if (!data || !data.found || isUserModified) return;
-
-        var sheetKey = document.getElementById('sheetName').value;
-        var dateVal = document.getElementById('doseDate').value;
-        var currentTime = document.getElementById('time').value.trim();
-        var amtInput = document.getElementById('amount');
-
-        var validDoses = [];
-        if (data.allDoses) {
-          for (var d = 0; d < data.allDoses.length; d++) {
-            var item = data.allDoses[d];
-            if (item.hasData && getParsedAmount(item.amount) > 0 && item.time) {
-              validDoses.push(item);
-            }
-          }
-        }
-
-        var cap = getDoseCap(dateVal);
-
-        if (validDoses.length === 0) {
-          lastRawRecommendation = cap;
-          amtInput.value = cap.toFixed(2);
-          amtInput.style.color = '#ffffff';
-          onTimeOrAmountInput();
-          return;
-        }
-
-        var nextDoseNum = validDoses.length + 1;
-        if (nextDoseNum > 8) return;
-
-        var recommendationRate = getRecommendationRate(dateVal); 
-
-        var curM = parseTimeToMinutes(currentTime);
-        if (curM === null) return;
-
-        var last = validDoses[validDoses.length - 1];
-        var lastM = parseTimeToMinutes(last.time);
-        if (lastM === null) return;
-
-        var elapsedMinFromLast = curM - lastM;
-        if (elapsedMinFromLast < 0) {
-          if (Math.abs(elapsedMinFromLast) <= 3) elapsedMinFromLast = 0;
-          else elapsedMinFromLast += 1440;
-        }
-
-        var initialDelta = 0;
-        if (validDoses.length >= 1) { 
-          var storedDiffKey = 'taper_diff_v6_' + sheetKey + '_' + dateVal + '_' + validDoses.length;
-          var savedDiffVal = localStorage.getItem(storedDiffKey);
-          if (savedDiffVal !== null) {
-            var sVal = parseFloat(savedDiffVal);
-            if (!isNaN(sVal)) {
-              initialDelta = sVal;
-            }
-          }
-        }
-
-        var elapsedHoursFromLast = elapsedMinFromLast / 60;
-        var naturalAccrual = recommendationRate * elapsedHoursFromLast;
-        var netNeeded = initialDelta + naturalAccrual;
-
-        if (validDoses.length === 1 && elapsedMinFromLast <= 10) {
-          netNeeded = initialDelta;
-        }
-
-        var uncappedNeeded = netNeeded;
-
-        if (netNeeded > cap) {
-          netNeeded = cap;
-        }
-
-        lastRawRecommendation = uncappedNeeded;
-        var rounded = Math.round(netNeeded * 100) / 100;
-        if (Math.abs(rounded) < 0.005) rounded = 0;
-
-        amtInput.value = rounded.toFixed(2);
-        if (rounded < 0) {
-          amtInput.style.color = '#ef5350';
-        } else {
-          amtInput.style.color = '#ffffff';
-        }
-
-        onTimeOrAmountInput();
-      }
-
-      function onTimeOrAmountInput() {
-        var raw = document.getElementById('amount').value.replace(',', '.');
-        var amountVal = getParsedAmount(raw);
-        var previewBox = document.getElementById('livePreviewBox');
-        var rateDisplayEl = document.getElementById('prevRateDisplay');
-        var dateVal = document.getElementById('doseDate').value;
-        var sheetKey = document.getElementById('sheetName').value;
-
-        var isNeg = String(raw).trim().startsWith('-');
-
-        if ((amountVal <= 0 && !isNeg) || !currentStatsData) {
-          previewBox.style.display = 'none';
-          return;
-        }
-
-        previewBox.style.display = 'block';
-
-        var currentTotal = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.').trim()) || 0;
-        var newTotal = isNeg ? currentTotal : (currentTotal + amountVal);
-        document.getElementById('prevTotal').innerText = newTotal.toFixed(2) + ' g';
-
-        var last = currentStatsData.lastDose;
-        if (last && last.amount && !isNeg) {
-          var lastAmt = parseFloat(String(last.amount).replace(',', '.').trim()) || 0;
-          var diff = (amountVal - lastAmt).toFixed(2);
-          var sign = diff > 0 ? '+' : '';
-          document.getElementById('prevDiff').innerText = sign + diff + ' g';
-        } else {
-          document.getElementById('prevDiff').innerText = '-';
-        }
-
-        var currentRecordedCount = 0;
-        if (currentStatsData.allDoses) {
-          for (var d = 0; d < currentStatsData.allDoses.length; d++) {
-            if (currentStatsData.allDoses[d].hasData) currentRecordedCount++;
-          }
-        }
-        var nextDoseNum = currentRecordedCount + 1;
-
-        if (nextDoseNum === 1 && !isNeg) {
-          rateDisplayEl.innerHTML = `<span style="color: #888;">-</span>`;
-          return;
-        }
-
-        var recommendationRate = getRecommendationRate(dateVal); 
-        var resultingRate = recommendationRate; 
-
-        var curM = parseTimeToMinutes(document.getElementById('time').value.trim());
-        var lastM = (last && last.time) ? parseTimeToMinutes(last.time) : null;
-
-        if (isNeg || amountVal === 0) {
-            if (window.liveRateParams) {
-                var p = window.liveRateParams;
-                var elapsedH = 0;
-                if (curM !== null && lastM !== null) {
-                    var dM = curM - lastM;
-                    if (dM < 0) dM += 1440;
-                    elapsedH = dM / 60;
-                }
-                var currentNet = p.initialDelta + (p.recRate * elapsedH);
-                if (currentNet < -0.005 && p.lastIntHours > 0) {
-                    resultingRate = p.recRate + (-currentNet / p.lastIntHours);
-                } else {
-                    resultingRate = p.recRate;
-                }
-            }
-            var cF = resultingRate.toFixed(2);
-            var col = (resultingRate > recommendationRate + 0.005) ? '#ef5350' : '#81c784';
-            rateDisplayEl.innerHTML = `<span style="color: ${col};">${cF} g/h</span>`;
-            return;
-        }
-
-        if (curM !== null && lastM !== null) {
-          var diffMin = curM - lastM;
-          if (diffMin < 0) diffMin += 1440;
-          var intHours = diffMin / 60;
-          
-          if (intHours > 0) {
-              var initialDelta = 0;
-              var prevDoseNum = currentRecordedCount; 
-              if (prevDoseNum >= 1) { 
-                  var storedDiffKey = 'taper_diff_v6_' + sheetKey + '_' + dateVal + '_' + prevDoseNum;
-                  var savedDiffVal = localStorage.getItem(storedDiffKey);
-                  if (savedDiffVal !== null) {
-                    var sVal = parseFloat(savedDiffVal);
-                    if (!isNaN(sVal)) initialDelta = sVal;
-                  }
-              }
-
-              var exactRec = initialDelta + (recommendationRate * intHours);
-
-              if (amountVal > exactRec + 0.005) { 
-                  resultingRate = (amountVal - initialDelta) / intHours;
-              } else {
-                  resultingRate = recommendationRate;
-              }
-          }
-        }
-
-        window.currentTypingRate = resultingRate; 
-
-        var currentFormatted = resultingRate.toFixed(2);
-
-        if (resultingRate <= recommendationRate && !isNeg) {
-          rateDisplayEl.innerHTML = `<span style="color: #81c784;">${currentFormatted} g/h</span>`;
-        } else {
-          rateDisplayEl.innerHTML = `<span style="color: #ef5350;">${currentFormatted} g/h</span>`;
-        }
-      }
-
-      function onWakeTimeChange() {
-        var sheetName = document.getElementById('sheetName').value;
-        var dateStr = document.getElementById('doseDate').value;
-        var wakeVal = document.getElementById('wakeTime').value.trim();
-
-        if (wakeVal && wakeVal.indexOf(':') === -1) return;
-
-        callApi({
-          action: 'saveWakeTime',
-          sheetName: sheetName,
-          dateStr: dateStr,
-          wakeTime: wakeVal
-        }, function(res) {
-          if (res && res.success) {
-            saveToLocalCache(sheetName, dateStr, res.stats);
-            renderAllStats(res.stats);
-          }
-        }, function(err) {});
-      }
-
-      function autoSubmit() {
-        if (isSaving) return;
-
-        var amountInput = document.getElementById('amount');
-        var rawVal = amountInput.value.replace(',', '.').trim();
-
-        if (rawVal.startsWith('-')) {
-          return;
-        }
-
-        var amountVal = getParsedAmount(rawVal);
-        if (amountVal <= 0) return;
-
-        var cleanAmountString = String(amountVal);
-        var sheetName = document.getElementById('sheetName').value;
-        var dateStr = document.getElementById('doseDate').value;
-        var time = document.getElementById('time').value.trim();
-        var wakeTime = document.getElementById('wakeTime').value.trim();
-
-        var validCount = 0;
-        if (currentStatsData && currentStatsData.allDoses) {
-          validCount = currentStatsData.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length;
-        }
-        var currentDoseIndex = validCount + 1;
-
-        var initialDelta = 0;
-        if (currentDoseIndex === 1 && lastRawRecommendation !== null) {
-          if (amountVal < lastRawRecommendation) {
-            initialDelta = lastRawRecommendation - amountVal;
-          }
-        } else if (currentDoseIndex > 1 && lastRawRecommendation !== null) {
-          initialDelta = lastRawRecommendation - amountVal;
-        }
-
-        var recommendationRate = getRecommendationRate(dateStr);
-        var targetLimit = recommendationRate + 0.01;
-        var lastIntHours = 0;
-        var curM = parseTimeToMinutes(time);
-        
-        var last = null;
-        if (currentStatsData && currentStatsData.lastDose) {
-           last = currentStatsData.lastDose;
-        }
-        
-        if (last && curM !== null) {
-           var lastM = parseTimeToMinutes(last.time);
-           if (lastM !== null) {
-               var d = curM - lastM;
-               if (d <= 0) d += 1440;
-               lastIntHours = d / 60;
-           }
-        } else if (!last && currentStatsData && currentStatsData.wakeTime && curM !== null) {
-           var wM = parseTimeToMinutes(currentStatsData.wakeTime);
-           if (wM !== null) {
-               var d = curM - wM;
-               if (d <= 0) d += 1440;
-               lastIntHours = d / 60;
-           }
-        }
-        
-        window.liveRateParams = {
-            doseNumber: currentDoseIndex,
-            lastIntHours: lastIntHours,
-            initialDelta: initialDelta,
-            recRate: recommendationRate,
-            baseRate: targetLimit,
-            startingHighRate: window.currentTypingRate || recommendationRate 
-        };
-
-        localStorage.setItem('taper_diff_v6_' + sheetName + '_' + dateStr + '_' + currentDoseIndex, initialDelta);
-
-        isSaving = true;
-        isUserModified = false;
-        isManualTimeSet = false;
-
-        lastRawRecommendation = initialDelta;
-        var rVal = Math.round(initialDelta * 100) / 100;
-        if (Math.abs(rVal) < 0.005) rVal = 0;
-
-        amountInput.value = rVal.toFixed(2);
-        amountInput.style.color = rVal < 0 ? '#ef5350' : '#ffffff';
-
-        if (currentStatsData && currentStatsData.allDoses) {
-          var valid = [];
-          for (var i = 0; i < currentStatsData.allDoses.length; i++) {
-            var d = currentStatsData.allDoses[i];
-            if (d.hasData && getParsedAmount(d.amount) > 0 && d.time) {
-              valid.push({ time: d.time, amount: getParsedAmount(d.amount) });
-            }
-          }
-          valid.push({ time: time, amount: amountVal });
-          valid.sort(function(a, b) { return a.time.localeCompare(b.time); });
-
-          currentStatsData.allDoses = [];
-          for (var k = 1; k <= 8; k++) {
-            var tInp = document.getElementById('t_time_' + k);
-            var aInp = document.getElementById('t_amount_' + k);
-            if (k <= valid.length) {
-              if (tInp) tInp.value = valid[k - 1].time;
-              if (aInp) aInp.value = valid[k - 1].amount.toFixed(2);
-              currentStatsData.allDoses.push({
-                doseNumber: k,
-                time: valid[k - 1].time,
-                amount: valid[k - 1].amount.toFixed(2),
-                hasData: true
-              });
-            } else {
-              if (tInp) tInp.value = '';
-              if (aInp) aInp.value = '';
-              currentStatsData.allDoses.push({
-                doseNumber: k,
-                time: '',
-                amount: '',
-                hasData: false
-              });
-            }
-          }
-
-          lastRecordedTimeStr = time;
-          var curTot = parseFloat(String(currentStatsData.dailyTotal).replace(' g', '').replace(',', '.').trim()) || 0;
-          currentStatsData.dailyTotal = (curTot + amountVal).toFixed(2) + ' g';
-
-          var calculatedDoseRate = '-';
-          if (valid.length > 1) {
-             calculatedDoseRate = recommendationRate.toFixed(2);
-          }
-
-          currentStatsData.lastDose = {
-            doseNumber: valid.length,
-            time: time,
-            amount: amountVal.toFixed(2),
-            doseDiff: initialDelta,
-            awakeTime: '-',
-            diff: '-',
-            rate: calculatedDoseRate
+      createApp({
+        setup() {
+          const sheetName = ref(localStorage.getItem('taper_active_profile') || 'Kori');
+          const doseDate = ref(getTodayDateStr());
+          const wakeTime = ref('');
+          const time = ref(new Date().toTimeString().substring(0, 5));
+          const amount = ref('');
+          const activeDayType = ref('Szabadnap');
+
+          const stats = ref(null);
+          const tableDoses = ref([]);
+          const loading = ref(false);
+          const errorMsg = ref('');
+
+          const isSaving = ref(false);
+          const isUserModified = ref(false);
+          const isManualTimeSet = ref(false);
+          const lastRawRecommendation = ref(null);
+          const liveRateParams = ref(null);
+          const currentTypingRate = ref(null);
+          const nowTick = ref(Date.now());
+          const settingsVersion = ref(0);
+
+          const showSettingsModal = ref(false);
+          const settingsForm = reactive({ days: 2, max: '3.67', rate: '1.19' });
+
+          const showStatsModal = ref(false);
+          const activeStatsMetric = ref('total');
+          const activeStatsRange = ref(7);
+          const fullHistoryPoints = ref([]);
+          const historyLoading = ref(false);
+
+          const getStepDays = () => {
+            settingsVersion.value;
+            const days = parseInt(localStorage.getItem('taper_step_days_v1_' + sheetName.value), 10);
+            return (isNaN(days) || days < 1 || days > 10) ? 2 : days;
           };
-          updateUpperCardsOnly(currentStatsData);
-        }
 
-        onTimeOrAmountInput();
-
-        callApi({
-          action: 'saveDose',
-          sheetName: sheetName,
-          dateStr: dateStr,
-          time: time,
-          amount: cleanAmountString,
-          wakeTime: wakeTime,
-          dayType: activeDayType
-        }, function(res) {
-          isSaving = false;
-          if (res && res.success && res.stats) {
-            if (currentStatsData && currentStatsData.lastDose) {
-              res.stats.lastDose.doseDiff = initialDelta;
+          const getDoseCap = (dateStr) => {
+            settingsVersion.value;
+            const stepDays = getStepDays();
+            let baseDate = new Date(2026, 10, 10);
+            let baseCap = 3.67;
+            const saved = localStorage.getItem('taper_custom_cap_anchor_v1_' + sheetName.value);
+            if (saved) {
+              try {
+                const parsed = JSON.parse(saved);
+                if (parsed && parsed.dateStr && !isNaN(parseFloat(parsed.cap))) {
+                  const bp = parsed.dateStr.split('-');
+                  if (bp.length === 3) {
+                    baseDate = new Date(parseInt(bp[0], 10), parseInt(bp[1], 10) - 1, parseInt(bp[2], 10));
+                    baseCap = parseFloat(parsed.cap);
+                  }
+                }
+              } catch (e) {}
             }
-            saveToLocalCache(sheetName, dateStr, res.stats);
-            renderAllStats(res.stats);
-          }
-        }, function(err) {
-          isSaving = false;
-        });
-      }
-
-      function handleTableAmountKeydown(e, doseNum) {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          var aEl = document.getElementById('t_amount_' + doseNum);
-          if (aEl) aEl.blur();
-          return;
-        }
-
-        if (e.key === 'Backspace' || e.key === 'Delete') {
-          var aEl = document.getElementById('t_amount_' + doseNum);
-          var tEl = document.getElementById('t_time_' + doseNum);
-
-          if (aEl && aEl.value.trim() !== '') {
-            e.preventDefault();
-            aEl.value = '';
-            executeEntryDeletion(doseNum);
-            return;
-          }
-
-          if (aEl && aEl.value.trim() === '' && tEl && tEl.value.trim() !== '') {
-            e.preventDefault();
-            tEl.value = '';
-            executeEntryDeletion(doseNum);
-            tEl.focus();
-          }
-        }
-      }
-
-      function executeEntryDeletion(doseNum) {
-        var tEl = document.getElementById('t_time_' + doseNum);
-        var aEl = document.getElementById('t_amount_' + doseNum);
-        if (aEl) aEl.value = '';
-
-        var sheetName = document.getElementById('sheetName').value;
-        var dateStr = document.getElementById('doseDate').value;
-
-        localStorage.removeItem('taper_diff_v6_' + sheetName + '_' + dateStr + '_' + doseNum);
-        window.liveRateParams = null;
-
-        if (currentStatsData && currentStatsData.allDoses) {
-          var idx = doseNum - 1;
-          if (idx >= 0 && idx < currentStatsData.allDoses.length) {
-            currentStatsData.allDoses[idx].amount = '';
-            currentStatsData.allDoses[idx].hasData = false;
-            if (tEl && tEl.value.trim() === '') {
-              currentStatsData.allDoses[idx].time = '';
+            const parts = (dateStr || '').split('-');
+            if (parts.length === 3) {
+              const cur = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+              const diffDays = Math.floor((cur.getTime() - baseDate.getTime()) / 86400000);
+              const steps = Math.floor(diffDays / stepDays);
+              return Math.max(0.1, parseFloat((baseCap - steps * 0.01).toFixed(2)));
             }
-          }
+            return baseCap;
+          };
 
-          var sum = 0;
-          var lastD = null;
-          for (var i = 0; i < currentStatsData.allDoses.length; i++) {
-            var it = currentStatsData.allDoses[i];
-            var aNum = getParsedAmount(it.amount);
-            if (it.hasData && aNum > 0) {
-              sum += aNum;
-              lastD = it;
+          const getRecommendationRate = (dateStr) => {
+            settingsVersion.value;
+            const stepDays = getStepDays();
+            let baseDate = new Date(2026, 10, 18);
+            let baseRate = 1.19;
+            const saved = localStorage.getItem('taper_custom_rate_anchor_v1_' + sheetName.value);
+            if (saved) {
+              try {
+                const parsed = JSON.parse(saved);
+                if (parsed && parsed.dateStr && !isNaN(parseFloat(parsed.rate))) {
+                  const bp = parsed.dateStr.split('-');
+                  if (bp.length === 3) {
+                    baseDate = new Date(parseInt(bp[0], 10), parseInt(bp[1], 10) - 1, parseInt(bp[2], 10));
+                    baseRate = parseFloat(parsed.rate);
+                  }
+                }
+              } catch (e) {}
             }
-          }
-          currentStatsData.dailyTotal = sum.toFixed(2) + ' g';
-          currentStatsData.lastDose = lastD;
-          if (lastD) lastRecordedTimeStr = lastD.time;
-          else lastRecordedTimeStr = null;
+            const parts = (dateStr || '').split('-');
+            if (parts.length === 3) {
+              const cur = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+              const diffDays = Math.floor((cur.getTime() - baseDate.getTime()) / 86400000);
+              const steps = Math.floor(diffDays / stepDays);
+              return Math.max(0.1, parseFloat((baseRate - steps * 0.01).toFixed(2)));
+            }
+            return baseRate;
+          };
 
-          saveToLocalCache(sheetName, dateStr, currentStatsData);
-          updateUpperCardsOnly(currentStatsData);
-          if (!isUserModified) applyDoseRecommendation(currentStatsData);
-        }
+          const currentCap = computed(() => getDoseCap(doseDate.value));
+          const currentRecRate = computed(() => getRecommendationRate(doseDate.value));
+          const isAmountNegative = computed(() => String(amount.value || '').trim().startsWith('-'));
 
-        callApi({
-          action: 'saveSingleDoseSilent',
-          sheetName: sheetName,
-          dateStr: dateStr,
-          doseNumber: doseNum,
-          time: tEl ? tEl.value.trim() : '',
-          amount: 0
-        }, function(res) {
-          if (res && res.success && res.stats) {
-            saveToLocalCache(sheetName, dateStr, res.stats);
-            renderAllStats(res.stats);
-          }
-        }, function(err) {});
-      }
+          const liveAwake = computed(() => {
+            nowTick.value;
+            const wVal = (wakeTime.value || (stats.value && stats.value.wakeTime) || '').trim();
+            const wakeM = parseTimeToMinutes(wVal);
+            if (wakeM === null) return '-';
+            const now = new Date();
+            let diffMin = (now.getHours() * 60 + now.getMinutes()) - wakeM;
+            if (diffMin < 0) diffMin += 1440;
+            return `${String(Math.floor(diffMin / 60)).padStart(2, '0')}:${String(diffMin % 60).padStart(2, '0')}`;
+          });
 
-      function triggerTableDoseSync(doseNum) {
-        var tEl = document.getElementById('t_time_' + doseNum);
-        var aEl = document.getElementById('t_amount_' + doseNum);
+          const liveElapsed = computed(() => {
+            nowTick.value;
+            const last = stats.value && stats.value.lastDose;
+            if (!last || !last.time) return '-';
+            const parts = last.time.split(':');
+            if (parts.length < 2) return '-';
+            const lastDate = new Date();
+            lastDate.setHours(parseInt(parts[0], 10), parseInt(parts[1], 10), 0, 0);
+            let diffMs = Date.now() - lastDate.getTime();
+            if (diffMs < 0) diffMs += 86400000;
+            const totalMinutes = Math.floor(diffMs / 60000);
+            const h = Math.floor(totalMinutes / 60);
+            const m = totalMinutes % 60;
+            return h === 0 ? `${m} min` : `${h} h ${String(m).padStart(2, '0')} min`;
+          });
 
-        normalizeTimeField(tEl);
+          const preview = computed(() => {
+            nowTick.value;
+            const raw = String(amount.value || '').replace(',', '.');
+            const amtVal = getParsedAmount(raw);
+            const isNeg = raw.trim().startsWith('-');
+            if ((amtVal <= 0 && !isNeg) || !stats.value) {
+              return { visible: false, total: '-', diff: '-', rateText: '-', rateColor: '#888' };
+            }
+            const curTot = parseFloat(String(stats.value.dailyTotal || '0').replace(' g', '').replace(',', '.').trim()) || 0;
+            const newTotal = (isNeg ? curTot : curTot + amtVal).toFixed(2) + ' g';
 
-        var timeVal = tEl ? tEl.value.trim() : '';
-        var amtVal = aEl ? aEl.value.replace(',', '.').trim() : '';
-        var cleanAmt = getParsedAmount(amtVal);
+            const last = stats.value.lastDose;
+            let diffText = '-';
+            if (last && last.amount && !isNeg) {
+              const lastAmt = parseFloat(String(last.amount).replace(',', '.').trim()) || 0;
+              const d = (amtVal - lastAmt).toFixed(2);
+              diffText = (parseFloat(d) > 0 ? '+' : '') + d + ' g';
+            }
 
-        if (cleanAmt <= 0 && (!amtVal || amtVal.trim() === '')) {
-          executeEntryDeletion(doseNum);
-          return;
-        }
+            const recordedCount = (stats.value.allDoses || []).filter(d => d.hasData).length;
+            if (recordedCount === 0 && !isNeg) {
+              return { visible: true, total: newTotal, diff: diffText, rateText: '-', rateColor: '#888' };
+            }
 
-        var sheetName = document.getElementById('sheetName').value;
-        var dateStr = document.getElementById('doseDate').value;
+            const recRate = currentRecRate.value;
+            let resultingRate = recRate;
+            const curM = parseTimeToMinutes(time.value.trim());
+            const lastM = (last && last.time) ? parseTimeToMinutes(last.time) : null;
 
-        window.liveRateParams = null;
+            if (isNeg || amtVal === 0) {
+              if (liveRateParams.value) {
+                const p = liveRateParams.value;
+                let elapsedH = 0;
+                if (curM !== null && lastM !== null) {
+                  let dM = curM - lastM;
+                  if (dM < 0) dM += 1440;
+                  elapsedH = dM / 60;
+                }
+                const currentNet = p.initialDelta + p.recRate * elapsedH;
+                resultingRate = (currentNet < -0.005 && p.lastIntHours > 0) ? (p.recRate + (-currentNet / p.lastIntHours)) : p.recRate;
+              }
+              const col = (resultingRate > recRate + 0.005) ? '#ef5350' : '#81c784';
+              return { visible: true, total: newTotal, diff: diffText, rateText: `${resultingRate.toFixed(2)} g/h`, rateColor: col };
+            }
 
-        if (currentStatsData && currentStatsData.allDoses) {
-          var idx = doseNum - 1;
-          if (idx >= 0 && idx < currentStatsData.allDoses.length) {
-            currentStatsData.allDoses[idx].time = timeVal;
-            currentStatsData.allDoses[idx].amount = cleanAmt > 0 ? cleanAmt.toFixed(2) : '';
-            currentStatsData.allDoses[idx].hasData = (cleanAmt > 0);
-
-            var sumG = 0;
-            var lastD = null;
-            for (var i = 0; i < currentStatsData.allDoses.length; i++) {
-              var d = currentStatsData.allDoses[i];
-              var num = parseFloat(d.amount);
-              if (!isNaN(num) && num > 0) {
-                sumG += num;
-                lastD = d;
+            if (curM !== null && lastM !== null) {
+              let diffMin = curM - lastM;
+              if (diffMin < 0) diffMin += 1440;
+              const intHours = diffMin / 60;
+              if (intHours > 0) {
+                let initialDelta = 0;
+                if (recordedCount >= 1) {
+                  const savedDiff = localStorage.getItem(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${recordedCount}`);
+                  if (savedDiff !== null && !isNaN(parseFloat(savedDiff))) initialDelta = parseFloat(savedDiff);
+                }
+                const exactRec = initialDelta + recRate * intHours;
+                resultingRate = (amtVal > exactRec + 0.005) ? ((amtVal - initialDelta) / intHours) : recRate;
               }
             }
-            currentStatsData.dailyTotal = sumG.toFixed(2) + ' g';
-            if (lastD) {
-              lastRecordedTimeStr = lastD.time;
-              currentStatsData.lastDose = lastD;
-            } else {
-              lastRecordedTimeStr = null;
-              currentStatsData.lastDose = null;
+
+            currentTypingRate.value = resultingRate;
+            const col = (resultingRate <= recRate && !isNeg) ? '#81c784' : '#ef5350';
+            return { visible: true, total: newTotal, diff: diffText, rateText: `${resultingRate.toFixed(2)} g/h`, rateColor: col };
+          });
+
+          const saveToLocalCache = (sName, dStr, data) => {
+            try { localStorage.setItem(`taper_fast_cache_v24_${sName}_${dStr}`, JSON.stringify(data)); } catch (e) {}
+          };
+
+          const syncLiveRateParams = (data) => {
+            const last = data.lastDose;
+            if (!last) return;
+            const validDoses = (data.allDoses || []).filter(d => d.hasData && getParsedAmount(d.amount) > 0);
+            const savedDoseNum = validDoses.length;
+            if (liveRateParams.value && liveRateParams.value.doseNumber === savedDoseNum) return;
+
+            let lastIntHours = 0;
+            if (validDoses.length > 1) {
+              const pM = parseTimeToMinutes(validDoses[validDoses.length - 2].time);
+              const lM = parseTimeToMinutes(last.time);
+              if (pM !== null && lM !== null) {
+                let d = lM - pM;
+                if (d <= 0) d += 1440;
+                lastIntHours = d / 60;
+              }
+            } else if (validDoses.length === 1 && data.wakeTime) {
+              const wM = parseTimeToMinutes(data.wakeTime);
+              const lM = parseTimeToMinutes(last.time);
+              if (wM !== null && lM !== null) {
+                let d = lM - wM;
+                if (d <= 0) d += 1440;
+                lastIntHours = d / 60;
+              }
             }
 
-            saveToLocalCache(sheetName, dateStr, currentStatsData);
-            updateUpperCardsOnly(currentStatsData);
-            if (!isUserModified) {
-              applyDoseRecommendation(currentStatsData);
+            const prevDoseNum = last.doseNumber - 1;
+            const prevDelta = prevDoseNum >= 1 ? (parseFloat(localStorage.getItem(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${prevDoseNum}`)) || 0) : 0;
+            const initialDelta = parseFloat(localStorage.getItem(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${last.doseNumber}`)) || 0;
+            const recRate = currentRecRate.value;
+            const lAmt = getParsedAmount(last.amount);
+            let calcRate = recRate;
+            if (lastIntHours > 0) {
+              const exactRec = prevDelta + recRate * lastIntHours;
+              if (lAmt > exactRec + 0.005) calcRate = (lAmt - prevDelta) / lastIntHours;
             }
-          }
-        }
 
-        callApi({
-          action: 'saveSingleDoseSilent',
-          sheetName: sheetName,
-          dateStr: dateStr,
-          doseNumber: doseNum,
-          time: timeVal,
-          amount: cleanAmt
-        }, function(res) {
-          if (res && res.success) {
-            saveToLocalCache(sheetName, dateStr, res.stats);
-            updateUpperCardsOnly(res.stats);
-            if (!isUserModified) {
-              applyDoseRecommendation(res.stats);
+            liveRateParams.value = {
+              doseNumber: savedDoseNum,
+              lastIntHours,
+              initialDelta,
+              recRate,
+              baseRate: recRate + 0.01,
+              startingHighRate: calcRate
+            };
+          };
+
+          const applyDoseRecommendation = (data) => {
+            if (!data || !data.found || isUserModified.value) return;
+            const validDoses = (data.allDoses || []).filter(d => d.hasData && getParsedAmount(d.amount) > 0 && d.time);
+            const cap = currentCap.value;
+
+            if (validDoses.length === 0) {
+              lastRawRecommendation.value = cap;
+              amount.value = cap.toFixed(2);
+              return;
             }
-          }
-        }, function(err) {});
-      }
+            if (validDoses.length + 1 > 8) return;
 
-      function commitAndSortTableDoses() {
-        var activeEl = document.activeElement;
-        if (activeEl && activeEl.id && (activeEl.id.startsWith('t_time_') || activeEl.id.startsWith('t_amount_'))) {
-          return;
-        }
+            const curM = parseTimeToMinutes(time.value.trim());
+            const lastM = parseTimeToMinutes(validDoses[validDoses.length - 1].time);
+            if (curM === null || lastM === null) return;
 
-        var dosesList = [];
-        for (var i = 1; i <= 8; i++) {
-          var tEl = document.getElementById('t_time_' + i);
-          var aEl = document.getElementById('t_amount_' + i);
-          var tVal = tEl ? tEl.value.trim() : '';
-          var aVal = aEl ? aEl.value.replace(',', '.').trim() : '';
-          var parsedA = getParsedAmount(aVal);
-          if (parsedA > 0 && tVal && tVal.indexOf(':') !== -1) {
-            dosesList.push({ time: tVal, amount: parsedA });
-          }
-        }
+            let elapsedMin = curM - lastM;
+            if (elapsedMin < 0) elapsedMin = Math.abs(elapsedMin) <= 3 ? 0 : elapsedMin + 1440;
 
-        dosesList.sort(function(a, b) {
-          return a.time.localeCompare(b.time);
-        });
+            const savedDiff = localStorage.getItem(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${validDoses.length}`);
+            const initialDelta = (savedDiff !== null && !isNaN(parseFloat(savedDiff))) ? parseFloat(savedDiff) : 0;
 
-        for (var k = 1; k <= 8; k++) {
-          var tInp = document.getElementById('t_time_' + k);
-          var aInp = document.getElementById('t_amount_' + k);
-          if (k <= dosesList.length) {
-            if (tInp) tInp.value = dosesList[k - 1].time;
-            if (aInp) aInp.value = dosesList[k - 1].amount.toFixed(2);
-          } else {
-            if (tInp) tInp.value = '';
-            if (aInp) aInp.value = '';
-          }
-        }
+            let netNeeded = initialDelta + currentRecRate.value * (elapsedMin / 60);
+            if (validDoses.length === 1 && elapsedMin <= 10) netNeeded = initialDelta;
 
-        if (currentStatsData) {
-          var sumG = 0;
-          var lastD = null;
-          currentStatsData.allDoses = [];
-          for (var j = 0; j < 8; j++) {
-            if (j < dosesList.length) {
-              sumG += dosesList[j].amount;
-              var item = {
-                doseNumber: j + 1,
-                time: dosesList[j].time,
-                amount: dosesList[j].amount.toFixed(2),
-                hasData: true
+            lastRawRecommendation.value = netNeeded;
+            if (netNeeded > cap) netNeeded = cap;
+
+            let rounded = Math.round(netNeeded * 100) / 100;
+            if (Math.abs(rounded) < 0.005) rounded = 0;
+            amount.value = rounded.toFixed(2);
+          };
+
+          const hydrateStats = (data) => {
+            stats.value = data;
+            if (data.wakeTime) wakeTime.value = data.wakeTime;
+            const dt = String(data.dayType || '').toLowerCase();
+            activeDayType.value = (dt === 'munkanap' || dt === 'dolgozós' || dt === 'work') ? 'Munkanap' : 'Szabadnap';
+            syncLiveRateParams(data);
+
+            const activeEl = document.activeElement;
+            const isEditingTable = activeEl && activeEl.id && (activeEl.id.startsWith('t_time_') || activeEl.id.startsWith('t_amount_'));
+            if (!isEditingTable) {
+              tableDoses.value = (data.allDoses || []).map(item => ({
+                doseNumber: item.doseNumber,
+                time: item.time || '',
+                amount: item.amount ? String(item.amount).replace(',', '.') : '',
+                hasData: item.hasData
+              }));
+            }
+            applyDoseRecommendation(data);
+          };
+
+          const loadStats = () => {
+            errorMsg.value = '';
+            const cacheKey = `taper_fast_cache_v24_${sheetName.value}_${doseDate.value}`;
+            let hasCache = false;
+            try {
+              const cached = JSON.parse(localStorage.getItem(cacheKey));
+              if (cached && cached.found) {
+                hydrateStats(cached);
+                hasCache = true;
+              }
+            } catch (e) {}
+
+            if (!hasCache) {
+              stats.value = null;
+              loading.value = true;
+            }
+
+            callApi({ action: 'getStats', sheetName: sheetName.value, dateStr: doseDate.value }, (data) => {
+              loading.value = false;
+              if (!data || !data.found) {
+                if (!hasCache) stats.value = { found: false };
+                return;
+              }
+              saveToLocalCache(sheetName.value, doseDate.value, data);
+              hydrateStats(data);
+            }, (err) => {
+              loading.value = false;
+              if (!hasCache) errorMsg.value = 'Error: ' + err.message;
+            });
+          };
+
+          const onProfileChange = () => {
+            localStorage.setItem('taper_active_profile', sheetName.value);
+            stats.value = null;
+            isUserModified.value = false;
+            isManualTimeSet.value = false;
+            lastRawRecommendation.value = null;
+            liveRateParams.value = null;
+            currentTypingRate.value = null;
+            amount.value = '';
+            loadStats();
+          };
+
+          const setDayType = (type) => {
+            activeDayType.value = type;
+            callApi({ action: 'saveDayType', sheetName: sheetName.value, dateStr: doseDate.value, dayType: type }, (res) => {
+              if (res && res.success) {
+                saveToLocalCache(sheetName.value, doseDate.value, res.stats);
+                hydrateStats(res.stats);
+              }
+            });
+          };
+
+          const onWakeInput = (e) => {
+            wakeTime.value = formatTimeStr(e.target.value);
+            e.target.value = wakeTime.value;
+          };
+
+          const onWakeBlur = () => {
+            wakeTime.value = normalizeTimeStr(wakeTime.value);
+            if (wakeTime.value && wakeTime.value.indexOf(':') === -1) return;
+            callApi({ action: 'saveWakeTime', sheetName: sheetName.value, dateStr: doseDate.value, wakeTime: wakeTime.value }, (res) => {
+              if (res && res.success) {
+                saveToLocalCache(sheetName.value, doseDate.value, res.stats);
+                hydrateStats(res.stats);
+              }
+            });
+          };
+
+          const onManualTimeInput = (e) => {
+            isManualTimeSet.value = true;
+            time.value = formatTimeStr(e.target.value);
+            e.target.value = time.value;
+            if (!isUserModified.value && stats.value) applyDoseRecommendation(stats.value);
+          };
+
+          const onTimeBlur = () => {
+            time.value = normalizeTimeStr(time.value);
+            if (!isUserModified.value && stats.value) applyDoseRecommendation(stats.value);
+          };
+
+          const onAmountInput = (e) => {
+            isUserModified.value = true;
+            amount.value = formatAmountStr(e.target.value);
+            e.target.value = amount.value;
+          };
+
+          const handleDoseContainerClick = () => {
+            if (getParsedAmount(amount.value) > 0 && !isSaving.value) autoSubmit();
+          };
+
+          const handleAmountBlur = () => {
+            setTimeout(() => {
+              if (getParsedAmount(amount.value) > 0 && !isSaving.value && isUserModified.value) autoSubmit();
+            }, 150);
+          };
+
+          const autoSubmit = () => {
+            if (isSaving.value) return;
+            const rawVal = String(amount.value || '').replace(',', '.').trim();
+            if (rawVal.startsWith('-')) return;
+            const amountVal = getParsedAmount(rawVal);
+            if (amountVal <= 0) return;
+
+            const validCount = stats.value && stats.value.allDoses
+              ? stats.value.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length
+              : 0;
+            const currentDoseIndex = validCount + 1;
+
+            let initialDelta = 0;
+            if (currentDoseIndex === 1 && lastRawRecommendation.value !== null) {
+              if (amountVal < lastRawRecommendation.value) initialDelta = lastRawRecommendation.value - amountVal;
+            } else if (currentDoseIndex > 1 && lastRawRecommendation.value !== null) {
+              initialDelta = lastRawRecommendation.value - amountVal;
+            }
+
+            const recRate = currentRecRate.value;
+            let lastIntHours = 0;
+            const curM = parseTimeToMinutes(time.value.trim());
+            const last = stats.value && stats.value.lastDose;
+            if (last && curM !== null) {
+              const lastM = parseTimeToMinutes(last.time);
+              if (lastM !== null) {
+                let d = curM - lastM;
+                if (d <= 0) d += 1440;
+                lastIntHours = d / 60;
+              }
+            } else if (!last && stats.value && stats.value.wakeTime && curM !== null) {
+              const wM = parseTimeToMinutes(stats.value.wakeTime);
+              if (wM !== null) {
+                let d = curM - wM;
+                if (d <= 0) d += 1440;
+                lastIntHours = d / 60;
+              }
+            }
+
+            liveRateParams.value = {
+              doseNumber: currentDoseIndex,
+              lastIntHours,
+              initialDelta,
+              recRate,
+              baseRate: recRate + 0.01,
+              startingHighRate: currentTypingRate.value || recRate
+            };
+            localStorage.setItem(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${currentDoseIndex}`, initialDelta);
+
+            isSaving.value = true;
+            isUserModified.value = false;
+            isManualTimeSet.value = false;
+            lastRawRecommendation.value = initialDelta;
+
+            let rVal = Math.round(initialDelta * 100) / 100;
+            if (Math.abs(rVal) < 0.005) rVal = 0;
+            amount.value = rVal.toFixed(2);
+
+            if (stats.value && stats.value.allDoses) {
+              const valid = stats.value.allDoses
+                .filter(d => d.hasData && getParsedAmount(d.amount) > 0 && d.time)
+                .map(d => ({ time: d.time, amount: getParsedAmount(d.amount) }));
+              valid.push({ time: time.value.trim(), amount: amountVal });
+              valid.sort((a, b) => a.time.localeCompare(b.time));
+
+              const updatedDoses = [];
+              for (let k = 1; k <= 8; k++) {
+                if (k <= valid.length) {
+                  updatedDoses.push({ doseNumber: k, time: valid[k - 1].time, amount: valid[k - 1].amount.toFixed(2), hasData: true });
+                } else {
+                  updatedDoses.push({ doseNumber: k, time: '', amount: '', hasData: false });
+                }
+              }
+              const curTot = parseFloat(String(stats.value.dailyTotal || '0').replace(' g', '').replace(',', '.').trim()) || 0;
+              stats.value = {
+                ...stats.value,
+                allDoses: updatedDoses,
+                dailyTotal: (curTot + amountVal).toFixed(2) + ' g',
+                lastDose: {
+                  doseNumber: valid.length,
+                  time: time.value.trim(),
+                  amount: amountVal.toFixed(2),
+                  doseDiff: initialDelta,
+                  awakeTime: '-',
+                  diff: '-',
+                  rate: valid.length > 1 ? recRate.toFixed(2) : '-'
+                }
               };
-              lastD = item;
-              currentStatsData.allDoses.push(item);
+              tableDoses.value = updatedDoses.map(d => ({ ...d }));
+            }
+
+            callApi({
+              action: 'saveDose',
+              sheetName: sheetName.value,
+              dateStr: doseDate.value,
+              time: time.value.trim(),
+              amount: String(amountVal),
+              wakeTime: wakeTime.value.trim(),
+              dayType: activeDayType.value
+            }, (res) => {
+              isSaving.value = false;
+              if (res && res.success && res.stats) {
+                if (res.stats.lastDose) res.stats.lastDose.doseDiff = initialDelta;
+                saveToLocalCache(sheetName.value, doseDate.value, res.stats);
+                hydrateStats(res.stats);
+              }
+            }, () => { isSaving.value = false; });
+          };
+
+          const onTableTimeInput = (e, item) => {
+            const digits = buildSmartTimeDigits(e.target.value);
+            item.time = digits.length >= 3 ? `${digits.substring(0, 2)}:${digits.substring(2, 4)}` : digits;
+            e.target.value = item.time;
+            if (digits.length >= 4) {
+              const aEl = document.getElementById('t_amount_' + item.doseNumber);
+              if (aEl) setTimeout(() => { aEl.focus(); aEl.select(); }, 30);
+            }
+          };
+
+          const onTableTimeBlur = (item) => {
+            item.time = normalizeTimeStr(item.time);
+            triggerTableDoseSync(item);
+          };
+
+          const onTableAmountInput = (e, item) => {
+            item.amount = formatAmountStr(e.target.value);
+            e.target.value = item.amount;
+            triggerTableDoseSync(item);
+          };
+
+          const handleTableAmountKeydown = (e, item) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              e.target.blur();
+              return;
+            }
+            if (e.key === 'Backspace' || e.key === 'Delete') {
+              if (item.amount.trim() !== '') {
+                e.preventDefault();
+                item.amount = '';
+                executeEntryDeletion(item);
+              } else if (item.time.trim() !== '') {
+                e.preventDefault();
+                item.time = '';
+                executeEntryDeletion(item);
+                const tEl = document.getElementById('t_time_' + item.doseNumber);
+                if (tEl) tEl.focus();
+              }
+            }
+          };
+
+          const recomputeLocalTableSummary = () => {
+            if (!stats.value) return;
+            let sum = 0;
+            let lastD = null;
+            stats.value.allDoses = tableDoses.value.map(it => {
+              const num = getParsedAmount(it.amount);
+              const hasData = num > 0;
+              if (hasData) { sum += num; lastD = { ...it, hasData: true }; }
+              return { ...it, hasData };
+            });
+            stats.value.dailyTotal = sum.toFixed(2) + ' g';
+            stats.value.lastDose = lastD;
+            saveToLocalCache(sheetName.value, doseDate.value, stats.value);
+            if (!isUserModified.value) applyDoseRecommendation(stats.value);
+          };
+
+          const executeEntryDeletion = (item) => {
+            item.amount = '';
+            localStorage.removeItem(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${item.doseNumber}`);
+            liveRateParams.value = null;
+            recomputeLocalTableSummary();
+            callApi({
+              action: 'saveSingleDoseSilent',
+              sheetName: sheetName.value,
+              dateStr: doseDate.value,
+              doseNumber: item.doseNumber,
+              time: item.time.trim(),
+              amount: 0
+            }, (res) => {
+              if (res && res.success && res.stats) {
+                saveToLocalCache(sheetName.value, doseDate.value, res.stats);
+                hydrateStats(res.stats);
+              }
+            });
+          };
+
+          const triggerTableDoseSync = (item) => {
+            item.time = normalizeTimeStr(item.time);
+            const cleanAmt = getParsedAmount(item.amount);
+            if (cleanAmt <= 0 && !item.amount.trim()) {
+              executeEntryDeletion(item);
+              return;
+            }
+            liveRateParams.value = null;
+            recomputeLocalTableSummary();
+            callApi({
+              action: 'saveSingleDoseSilent',
+              sheetName: sheetName.value,
+              dateStr: doseDate.value,
+              doseNumber: item.doseNumber,
+              time: item.time.trim(),
+              amount: cleanAmt
+            }, (res) => {
+              if (res && res.success && res.stats) {
+                saveToLocalCache(sheetName.value, doseDate.value, res.stats);
+                hydrateStats(res.stats);
+              }
+            });
+          };
+
+          /* --- SETTINGS MODAL --- */
+          const openSettingsModal = () => {
+            settingsForm.days = getStepDays();
+            settingsForm.max = getDoseCap(doseDate.value).toFixed(2);
+            settingsForm.rate = getRecommendationRate(doseDate.value).toFixed(2);
+            showSettingsModal.value = true;
+          };
+
+          const saveSettingsModal = () => {
+            const days = Math.min(10, Math.max(1, Math.round(settingsForm.days || 2)));
+            localStorage.setItem('taper_step_days_v1_' + sheetName.value, String(days));
+
+            const maxVal = getParsedAmount(settingsForm.max);
+            if (maxVal > 0) {
+              localStorage.setItem('taper_custom_cap_anchor_v1_' + sheetName.value, JSON.stringify({
+                dateStr: doseDate.value,
+                cap: parseFloat(maxVal.toFixed(2))
+              }));
+            }
+
+            const rateVal = getParsedAmount(settingsForm.rate);
+            if (rateVal > 0) {
+              localStorage.setItem('taper_custom_rate_anchor_v1_' + sheetName.value, JSON.stringify({
+                dateStr: doseDate.value,
+                rate: parseFloat(rateVal.toFixed(2))
+              }));
+            }
+
+            settingsVersion.value++;
+            liveRateParams.value = null;
+            showSettingsModal.value = false;
+            if (stats.value && !isUserModified.value) applyDoseRecommendation(stats.value);
+          };
+
+          /* --- STATISTICS MODAL --- */
+          const getLocalCachedHistory = () => {
+            const todayStr = getTodayDateStr();
+            const cutoffStr = getDateStrOffset(95);
+            const prefix = `taper_fast_cache_v24_${sheetName.value}_`;
+            const results = [];
+            for (let i = 0; i < localStorage.length; i++) {
+              const key = localStorage.key(i);
+              if (!key || !key.startsWith(prefix)) continue;
+              const dStr = key.substring(prefix.length);
+              if (dStr > todayStr || dStr < cutoffStr) continue;
+              try {
+                const parsed = JSON.parse(localStorage.getItem(key));
+                if (!parsed || !parsed.found || !parsed.dailyTotal) continue;
+                const tot = parseFloat(String(parsed.dailyTotal).replace(' g', '').replace(',', '.').trim());
+                const cnt = parsed.allDoses
+                  ? parsed.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length
+                  : (parseInt(parsed.totalDoses, 10) || 0);
+                if (dStr === todayStr && cnt < 6) continue;
+                if (dStr <= '2026-11-22' && tot < 13) continue;
+                if (!isNaN(tot) && tot > 0) {
+                  results.push({
+                    date: dStr,
+                    total: tot,
+                    rate: parseRateNumber(parsed.dailyRate || parsed.avgRate || (parsed.lastDose && parsed.lastDose.rate)),
+                    count: cnt
+                  });
+                }
+              } catch (e) {}
+            }
+            return results.sort((a, b) => a.date.localeCompare(b.date));
+          };
+
+          const openStatsModal = () => {
+            showSettingsModal.value = false;
+            showStatsModal.value = true;
+            fullHistoryPoints.value = getLocalCachedHistory();
+            historyLoading.value = true;
+            const todayStr = getTodayDateStr();
+
+            callApi({ action: 'getHistory', sheetName: sheetName.value, days: 90 }, (res) => {
+              historyLoading.value = false;
+              if (res && res.success && Array.isArray(res.history)) {
+                const filtered = res.history
+                  .filter(item => {
+                    if (!item.date || item.date > todayStr) return false;
+                    const tot = parseFloat(item.total);
+                    if (isNaN(tot) || tot <= 0) return false;
+                    const cnt = parseInt(item.count, 10) || 0;
+                    if (item.date === todayStr && cnt < 6) return false;
+                    if (item.date <= '2026-11-22' && tot < 13) return false;
+                    return true;
+                  })
+                  .map(item => ({
+                    date: item.date,
+                    total: parseFloat(item.total),
+                    rate: parseRateNumber(item.rate),
+                    count: parseInt(item.count, 10) || 0
+                  }))
+                  .sort((a, b) => a.date.localeCompare(b.date));
+                if (filtered.length > 0) fullHistoryPoints.value = filtered;
+              }
+            }, () => { historyLoading.value = false; });
+          };
+
+          const filteredChartPoints = computed(() => {
+            const cutoffStr = getDateStrOffset(activeStatsRange.value);
+            const isRate = activeStatsMetric.value === 'rate';
+            return fullHistoryPoints.value.filter(p => p.date >= cutoffStr && (isRate ? (p.rate !== null && p.rate > 0) : p.total > 0));
+          });
+
+          const chartStats = computed(() => {
+            const pts = filteredChartPoints.value;
+            if (!pts.length) return { avg: '-', min: '-', max: '-' };
+            const isRate = activeStatsMetric.value === 'rate';
+            const unit = isRate ? 'g/h' : 'g';
+            const vals = pts.map(p => isRate ? p.rate : p.total);
+            const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+            return {
+              avg: `${avg.toFixed(2)} ${unit}`,
+              min: `${Math.min(...vals).toFixed(2)} ${unit}`,
+              max: `${Math.max(...vals).toFixed(2)} ${unit}`
+            };
+          });
+
+          const chartData = computed(() => {
+            const pts = filteredChartPoints.value;
+            if (!pts.length) return { points: [], dots: [] };
+            const isRate = activeStatsMetric.value === 'rate';
+            const vals = pts.map(p => isRate ? p.rate : p.total);
+            const minVal = Math.min(...vals);
+            const maxVal = Math.max(...vals);
+            const padL = 38, padR = 12, padT = 14, padB = 24, W = 360, H = 174;
+            const plotW = W - padL - padR;
+            const plotH = H - padT - padB;
+
+            let yMin = minVal, yMax = maxVal;
+            if (yMax === yMin) {
+              const s = isRate ? 0.1 : 1;
+              yMin = Math.max(0, yMin - s);
+              yMax += s;
             } else {
-              currentStatsData.allDoses.push({
-                doseNumber: j + 1,
-                time: '',
-                amount: '',
-                hasData: false
-              });
+              const m = (yMax - yMin) * 0.12;
+              yMin = Math.max(0, yMin - m);
+              yMax += m;
             }
-          }
-          currentStatsData.dailyTotal = sumG.toFixed(2) + ' g';
-          currentStatsData.lastDose = lastD;
-          if (lastD) lastRecordedTimeStr = lastD.time;
-          updateUpperCardsOnly(currentStatsData);
-          if (!isUserModified) applyDoseRecommendation(currentStatsData);
-        }
 
-        var sheetName = document.getElementById('sheetName').value;
-        var dateStr = document.getElementById('doseDate').value;
+            const getX = i => pts.length === 1 ? padL + plotW / 2 : padL + (i / (pts.length - 1)) * plotW;
+            const getY = v => padT + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
 
-        callApi({
-          action: 'saveAllTableDoses',
-          sheetName: sheetName,
-          dateStr: dateStr,
-          dosesJson: JSON.stringify(dosesList)
-        }, function(res) {
-          if (res && res.success && res.stats) {
-            saveToLocalCache(sheetName, dateStr, res.stats);
-            updateUpperCardsOnly(res.stats);
-            if (!isUserModified) applyDoseRecommendation(res.stats);
-          }
-        }, function(err) {});
-      }
+            const coords = pts.map((_, i) => ({ x: getX(i).toFixed(1), y: getY(vals[i]).toFixed(1) }));
+            const polyArr = coords.map(c => `${c.x},${c.y}`);
+            const baseY = (padT + plotH).toFixed(1);
+            const areaArr = [...polyArr, `${coords[coords.length - 1].x},${baseY}`, `${coords[0].x},${baseY}`];
+            const dec = isRate ? 2 : 1;
 
-      function saveToLocalCache(sheetName, dateStr, data) {
-        try {
-          localStorage.setItem('taper_fast_cache_v24_' + sheetName + '_' + dateStr, JSON.stringify(data));
-        } catch(e) {}
-      }
+            return {
+              points: pts,
+              polyPoints: polyArr.join(' '),
+              areaPoints: areaArr.join(' '),
+              dots: pts.length <= 31 ? coords : [],
+              yMaxLabel: yMax.toFixed(dec),
+              yMidLabel: ((yMin + yMax) / 2).toFixed(dec),
+              yMinLabel: yMin.toFixed(dec),
+              firstDate: pts[0].date.substring(5),
+              midDate: pts.length > 2 ? pts[Math.floor(pts.length / 2)].date.substring(5) : '',
+              lastDate: pts[pts.length - 1].date.substring(5)
+            };
+          });
 
-      function loadStats() {
-        var sheetName = document.getElementById('sheetName').value;
-        var dateStr = document.getElementById('doseDate').value;
+          const formatDiffObj = (diff, unit) => {
+            if (diff === null || isNaN(diff)) return { text: '-', color: '#666' };
+            const sign = diff > 0 ? '+' : '';
+            const color = diff > 0.005 ? '#ef5350' : (diff < -0.005 ? '#81c784' : '#aaa');
+            return { text: `${sign}${diff.toFixed(2)} ${unit}`, color };
+          };
 
-        var cacheKey = 'taper_fast_cache_v24_' + sheetName + '_' + dateStr;
-        var hasCachedData = false;
+          const calcPeriod = (windowDays) => {
+            const pts = fullHistoryPoints.value;
+            const todayStr = getTodayDateStr();
+            const curEndOffset = pts.some(p => p.date === todayStr) ? 0 : 1;
+            const curStart = getDateStrOffset(curEndOffset + windowDays - 1);
+            const curEnd = getDateStrOffset(curEndOffset);
+            const prevStart = getDateStrOffset(curEndOffset + windowDays * 2 - 1);
+            const prevEnd = getDateStrOffset(curEndOffset + windowDays);
 
-        try {
-          var cached = localStorage.getItem(cacheKey);
-          if (cached) {
-            var parsed = JSON.parse(cached);
-            if (parsed && parsed.found) {
-              currentStatsData = parsed;
-              renderAllStats(parsed);
-              hasCachedData = true;
+            const curPts = pts.filter(p => p.date >= curStart && p.date <= curEnd);
+            const prevPts = pts.filter(p => p.date >= prevStart && p.date <= prevEnd);
+
+            let doseDiff = null;
+            if (curPts.length && prevPts.length) {
+              const curAvg = curPts.reduce((s, p) => s + p.total, 0) / curPts.length;
+              const prevAvg = prevPts.reduce((s, p) => s + p.total, 0) / prevPts.length;
+              doseDiff = curAvg - prevAvg;
             }
-          }
-        } catch(e) {}
 
-        if (!hasCachedData) {
-          var summaryCard = document.getElementById('summaryStatsContent');
-          if (summaryCard) summaryCard.innerHTML = '<div class="loading">Loading...</div>';
-          var editCard = document.getElementById('editableDosesContent');
-          if (editCard) editCard.innerHTML = '<div class="loading">Loading...</div>';
-        }
-
-        callApi({
-          action: 'getStats',
-          sheetName: sheetName,
-          dateStr: dateStr
-        }, function(data) {
-          if (!data || !data.found) {
-            if (!hasCachedData) {
-              currentStatsData = null;
-              var summaryCard = document.getElementById('summaryStatsContent');
-              if (summaryCard) summaryCard.innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">No entries for this day.</div>';
-              var editCard = document.getElementById('editableDosesContent');
-              if (editCard) editCard.innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">No data.</div>';
+            const curR = curPts.filter(p => p.rate !== null);
+            const prevR = prevPts.filter(p => p.rate !== null);
+            let rateDiff = null;
+            if (curR.length && prevR.length) {
+              const curRAvg = curR.reduce((s, p) => s + p.rate, 0) / curR.length;
+              const prevRAvg = prevR.reduce((s, p) => s + p.rate, 0) / prevR.length;
+              rateDiff = curRAvg - prevRAvg;
             }
-            return;
-          }
-          currentStatsData = data;
-          saveToLocalCache(sheetName, dateStr, data);
-          renderAllStats(data);
-        }, function(err) {
-          if (!hasCachedData) {
-            var summaryCard = document.getElementById('summaryStatsContent');
-            if (summaryCard) summaryCard.innerHTML = '<div style="color: #e57373; font-size: 12px; padding: 8px;">Error: ' + err.message + '</div>';
-            var editCard = document.getElementById('editableDosesContent');
-            if (editCard) editCard.innerHTML = '';
-          }
-        });
-      }
+            return { dose: formatDiffObj(doseDiff, 'g'), rate: formatDiffObj(rateDiff, 'g/h') };
+          };
 
-      function updateUpperCardsOnly(data) {
-        currentStatsData = data;
-        var last = data.lastDose;
-        var dateVal = document.getElementById('doseDate').value;
-        var sheetKey = document.getElementById('sheetName').value;
+          const comparisons = computed(() => ({
+            week: calcPeriod(7),
+            month: calcPeriod(30)
+          }));
 
-        var recommendationRate = getRecommendationRate(dateVal);
-        var currentCap = getDoseCap(dateVal);
-        var targetLimit = recommendationRate + 0.01;
+          const cleanDisplay = (str) => {
+            if (!str) return '-';
+            return String(str).replace(/,/g, '.').replace(/g\/óra|g\/ó|g\/h/g, '').trim();
+          };
 
-        var elapsedHtml = '-';
-
-        if (!last) {
-          lastRecordedTimeStr = null;
-        } else {
-          lastRecordedTimeStr = last.time;
-          elapsedHtml = 'Calculating...';
-          
-          var validDoses = data.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0);
-          var savedDoseNum = validDoses.length;
-          
-          if (!window.liveRateParams || window.liveRateParams.doseNumber !== savedDoseNum) {
-              var lastIntHours = 0;
-              if (validDoses.length > 1) {
-                  var pM = parseTimeToMinutes(validDoses[validDoses.length - 2].time);
-                  var lM = parseTimeToMinutes(last.time);
-                  if (pM !== null && lM !== null) {
-                      var d = lM - pM;
-                      if (d <= 0) d += 1440;
-                      lastIntHours = d / 60;
-                  }
-              } else if (validDoses.length === 1 && data.wakeTime) {
-                  var wM = parseTimeToMinutes(data.wakeTime);
-                  var lM = parseTimeToMinutes(last.time);
-                  if (wM !== null && lM !== null) {
-                      var d = lM - wM;
-                      if (d <= 0) d += 1440;
-                      lastIntHours = d / 60;
-                  }
+          onMounted(() => {
+            loadStats();
+            setInterval(() => {
+              if (!isManualTimeSet.value && document.activeElement?.id !== 'time') {
+                const nowTime = new Date().toTimeString().substring(0, 5);
+                if (time.value !== nowTime) {
+                  time.value = nowTime;
+                  if (!isUserModified.value && stats.value) applyDoseRecommendation(stats.value);
+                }
               }
-              
-              var prevDelta = 0;
-              var prevDoseNum = last.doseNumber - 1;
-              if (prevDoseNum >= 1) {
-                  var storedPrevDiff = localStorage.getItem('taper_diff_v6_' + sheetKey + '_' + dateVal + '_' + prevDoseNum);
-                  if (storedPrevDiff !== null) {
-                      prevDelta = parseFloat(storedPrevDiff) || 0;
-                  }
-              }
-              
-              var initialDelta = 0;
-              var storedDiffKey = 'taper_diff_v6_' + sheetKey + '_' + dateVal + '_' + last.doseNumber;
-              var savedDiffVal = localStorage.getItem(storedDiffKey);
-              if (savedDiffVal !== null) {
-                  var sVal = parseFloat(savedDiffVal);
-                  if (!isNaN(sVal)) initialDelta = sVal;
-              }
-              
-              var lAmt = getParsedAmount(last.amount);
-              var calcRate = recommendationRate;
-              
-              if (lastIntHours > 0) {
-                  var exactRec = prevDelta + (recommendationRate * lastIntHours);
-                  if (lAmt > exactRec + 0.005) { 
-                      calcRate = (lAmt - prevDelta) / lastIntHours;
-                  }
-              }
-              
-              window.liveRateParams = {
-                  doseNumber: savedDoseNum,
-                  lastIntHours: lastIntHours,
-                  initialDelta: initialDelta,
-                  recRate: recommendationRate,
-                  baseRate: targetLimit,
-                  startingHighRate: calcRate 
-              };
-          }
-        }
+            }, 1000);
+            setInterval(() => { nowTick.value = Date.now(); }, 5000);
 
-        var summaryCard = document.getElementById('summaryStatsContent');
-        if (summaryCard) {
-          summaryCard.innerHTML = `
-            <div class="stat-row"><span class="stat-label">Elapsed</span><span id="liveElapsedDisplay" class="stat-value">${elapsedHtml}</span></div>
-            <div class="stat-row"><span class="stat-label">Awake</span><span id="liveAwakeDisplay" class="stat-value">-</span></div>
-            <div class="stat-row"><span class="stat-label">Max</span><span class="stat-value">${currentCap.toFixed(2)} g</span></div>
-            <div class="stat-row"><span class="stat-label">Total</span><span class="stat-value">${cleanDisplay(data.dailyTotal)}</span></div>
-            <div class="stat-row"><span class="stat-label">Average</span><span class="stat-value">${cleanDisplay(data.avgDose)}</span></div>
-            <div class="stat-row"><span class="stat-label">Interval</span><span class="stat-value">${cleanDisplay(data.avgInterval)}</span></div>
-          `;
-          updateLiveElapsedTime();
-        }
-      }
-
-      function renderAllStats(data) {
-        if (data.wakeTime) {
-          var wakeInput = document.getElementById('wakeTime');
-          if (wakeInput) wakeInput.value = data.wakeTime;
-        }
-
-        updateUpperCardsOnly(data);
-
-        var activeDay = (data.dayType && (data.dayType.toLowerCase() === 'munkanap' || data.dayType.toLowerCase() === 'dolgozós' || data.dayType.toLowerCase() === 'work')) ? 'Munkanap' : 'Szabadnap';
-        activeDayType = activeDay;
-        
-        var btnSzabad = document.getElementById('btnSzabadnap');
-        if (btnSzabad) btnSzabad.className = 'day-type-btn' + (activeDay === 'Szabadnap' ? ' active' : '');
-        
-        var btnMunka = document.getElementById('btnMunkanap');
-        if (btnMunka) btnMunka.className = 'day-type-btn' + (activeDay === 'Munkanap' ? ' active' : '');
-
-        var activeEl = document.activeElement;
-        var isEditingTable = activeEl && activeEl.id && (activeEl.id.startsWith('t_time_') || activeEl.id.startsWith('t_amount_'));
-        if (isEditingTable) {
-          return;
-        }
-
-        var doses = data.allDoses || [];
-        var tableHtml = `
-          <table class="doses-table">
-            <tbody>
-        `;
-
-        for (var i = 0; i < doses.length; i++) {
-          var item = doses[i];
-          tableHtml += `
-            <tr>
-              <td style="color: #666; font-size: 12px; font-weight: 500; text-align: center; width: 34px; padding-left: 2px; padding-right: 6px;">${item.doseNumber}</td>
-              <td style="width: 48%; padding-right: 4px;">
-                <input 
-                  type="text" 
-                  id="t_time_${item.doseNumber}" 
-                  class="table-input" 
-                  maxlength="5" 
-                  inputmode="numeric" 
-                  enterkeyhint="done"
-                  placeholder="00:00" 
-                  value="${item.time}" 
-                  oninput="onTableTimeInputAuto(this, ${item.doseNumber})" 
-                  onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
-                  onblur="normalizeTimeField(this); triggerTableDoseSync(${item.doseNumber});"
-                >
-              </td>
-              <td style="width: 48%; padding-left: 4px;">
-                <input 
-                  type="text" 
-                  id="t_amount_${item.doseNumber}" 
-                  class="table-input" 
-                  inputmode="numeric" 
-                  enterkeyhint="done"
-                  placeholder="0.00" 
-                  value="${item.amount ? String(item.amount).replace(',', '.') : ''}" 
-                  oninput="formatAmountInput(this); triggerTableDoseSync(${item.doseNumber});" 
-                  onkeydown="handleTableAmountKeydown(event, ${item.doseNumber})" 
-                  onblur="triggerTableDoseSync(${item.doseNumber})"
-                >
-              </td>
-            </tr>
-          `;
-        }
-
-        tableHtml += `
-            </tbody>
-          </table>
-        `;
-
-        var editCard = document.getElementById('editableDosesContent');
-        if (editCard) {
-          editCard.innerHTML = tableHtml;
-        }
-        applyDoseRecommendation(data);
-      }
-
-      function updateLiveAwakeTime() {
-        var awakeEl = document.getElementById('liveAwakeDisplay');
-        if (!awakeEl) return;
-
-        var wakeInput = document.getElementById('wakeTime');
-        var wakeVal = wakeInput ? wakeInput.value.trim() : '';
-        if (!wakeVal && currentStatsData && currentStatsData.wakeTime) {
-          wakeVal = currentStatsData.wakeTime;
-        }
-
-        var wakeM = parseTimeToMinutes(wakeVal);
-        if (wakeM === null) {
-          awakeEl.innerText = '-';
-          return;
-        }
-
-        var now = new Date();
-        var curM = now.getHours() * 60 + now.getMinutes();
-        var diffMin = curM - wakeM;
-        if (diffMin < 0) diffMin += 1440;
-
-        var hours = Math.floor(diffMin / 60);
-        var mins = diffMin % 60;
-        awakeEl.innerText = String(hours).padStart(2, '0') + ':' + String(mins).padStart(2, '0');
-      }
-
-      function updateLiveElapsedTime() {
-        updateLiveAwakeTime();
-
-        var el = document.getElementById('liveElapsedDisplay');
-        if (!el || !lastRecordedTimeStr) return;
-
-        var now = new Date();
-        var parts = lastRecordedTimeStr.split(':');
-        if (parts.length < 2) return;
-
-        var lastHour = parseInt(parts[0], 10);
-        var lastMin = parseInt(parts[1], 10);
-
-        var lastDate = new Date();
-        lastDate.setHours(lastHour, lastMin, 0, 0);
-
-        var diffMs = now.getTime() - lastDate.getTime();
-        if (diffMs < 0) {
-          diffMs += 24 * 60 * 60 * 1000;
-        }
-
-        var totalMinutes = Math.floor(diffMs / (1000 * 60));
-        var hours = Math.floor(totalMinutes / 60);
-        var mins = totalMinutes % 60;
-
-        if (hours === 0) {
-          el.innerText = mins + ' min';
-        } else {
-          el.innerText = hours + ' h ' + String(mins).padStart(2, '0') + ' min';
-        }
-        
-        if (window.liveRateParams && document.getElementById('prevRateDisplay')) {
-            var p = window.liveRateParams;
-            var elapsedH = totalMinutes / 60;
-            var currentNet = p.initialDelta + (p.recRate * elapsedH);
-            
-            var displayRate = p.recRate; 
-            
-            if (currentNet < -0.005 && p.lastIntHours > 0) {
-                displayRate = p.recRate + (-currentNet / p.lastIntHours); 
+            if ('serviceWorker' in navigator) {
+              navigator.serviceWorker.register('./sw.js');
             }
-            
-            var rateEl = document.getElementById('prevRateDisplay');
-            var amountEl = document.getElementById('amount');
-            if (rateEl && amountEl && amountEl.value.trim().startsWith('-')) {
-                var color = (displayRate > p.recRate + 0.005) ? '#ef5350' : '#81c784';
-                rateEl.innerHTML = `<span style="color: ${color};">${displayRate.toFixed(2)} g/h</span>`;
-            }
-        }
-      }
+          });
 
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('./sw.js');
-      }
+          return {
+            sheetName, doseDate, wakeTime, time, amount, activeDayType,
+            stats, tableDoses, loading, errorMsg,
+            currentCap, isAmountNegative, liveAwake, liveElapsed, preview,
+            showSettingsModal, settingsForm,
+            showStatsModal, activeStatsMetric, activeStatsRange, historyLoading,
+            chartStats, chartData, comparisons,
+            formatAmountStr, cleanDisplay,
+            loadStats, onProfileChange, setDayType,
+            onWakeInput, onWakeBlur, onManualTimeInput, onTimeBlur,
+            onAmountInput, handleDoseContainerClick, handleAmountBlur, autoSubmit,
+            onTableTimeInput, onTableTimeBlur, onTableAmountInput, handleTableAmountKeydown, triggerTableDoseSync,
+            openSettingsModal, saveSettingsModal, openStatsModal
+          };
+        }
+      }).mount('#app');
     </script>
   </body>
 </html>
