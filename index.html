@@ -285,7 +285,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 16px;
+        margin-bottom: 14px;
       }
       .modal-title {
         font-size: 12px;
@@ -389,7 +389,7 @@
         border-radius: 8px;
         padding: 3px;
         gap: 3px;
-        margin-bottom: 12px;
+        margin-bottom: 8px;
       }
       .range-tab {
         flex: 1;
@@ -561,7 +561,7 @@
       <div class="modal-box">
         <div class="modal-header">
           <span class="modal-title">Settings</span>
-          <button type="button" class="modal-close" onclick="closeSettingsModal()">&times;</button>
+          <button type="button" class="modal-close" onclick="closeSettingsModal()">×</button>
         </div>
 
         <div class="modal-section">
@@ -618,10 +618,15 @@
       <div class="modal-box modal-box-wide">
         <div class="modal-header">
           <span class="modal-title">Statistics</span>
-          <button type="button" class="modal-close" onclick="closeStatsModal()">&times;</button>
+          <button type="button" class="modal-close" onclick="closeStatsModal()">×</button>
         </div>
 
         <div class="range-tabs">
+          <button type="button" id="metricBtnTotal" class="range-tab active" onclick="setStatsMetric('total')">Total (g)</button>
+          <button type="button" id="metricBtnRate" class="range-tab" onclick="setStatsMetric('rate')">Rate (g/h)</button>
+        </div>
+
+        <div class="range-tabs" style="margin-bottom: 12px;">
           <button type="button" id="rangeBtn7" class="range-tab active" onclick="setStatsRange(7)">7 Days</button>
           <button type="button" id="rangeBtn30" class="range-tab" onclick="setStatsRange(30)">1 Month</button>
           <button type="button" id="rangeBtn90" class="range-tab" onclick="setStatsRange(90)">3 Months</button>
@@ -657,7 +662,7 @@
     </div>
 
     <script>
-      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwLunA0503U9F0PElqt4IXJ7e2OFIFURAZVApI8IUuVafVlDA65Ijk6zxcRORWC8X0/exec";
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwFDRlpzZi6cft3-fISblu1NlAQNby_TL7BZVHkKxeIr44YKauU2bU6nfqWkmd_O8c/exec";
       var isSaving = false;
       var lastRecordedTimeStr = null;
       var currentStatsData = null;
@@ -666,6 +671,7 @@
       var activeDayType = 'Szabadnap';
       var lastRawRecommendation = null;
       var activeStatsRange = 7;
+      var activeStatsMetric = 'total';
       var fullHistoryPoints = [];
       
       window.liveRateParams = null; 
@@ -829,6 +835,13 @@
         document.getElementById('statsModal').style.display = 'none';
       }
 
+      function setStatsMetric(metric) {
+        activeStatsMetric = metric;
+        document.getElementById('metricBtnTotal').className = 'range-tab' + (metric === 'total' ? ' active' : '');
+        document.getElementById('metricBtnRate').className = 'range-tab' + (metric === 'rate' ? ' active' : '');
+        renderStatsForRange(activeStatsRange);
+      }
+
       function setStatsRange(days) {
         activeStatsRange = days;
         document.getElementById('rangeBtn7').className = 'range-tab' + (days === 7 ? ' active' : '');
@@ -896,6 +909,7 @@
                   }
 
                   if (dStr === todayStr && doseCount < 6) continue;
+                  if (dStr <= '2026-11-22' && tot < 13) continue;
                   if (!isNaN(tot) && tot > 0) {
                     results.push({
                       date: dStr,
@@ -939,6 +953,7 @@
                 if (isNaN(tot) || tot <= 0) return false;
                 var cnt = parseInt(item.count, 10) || 0;
                 if (item.date === todayStr && cnt < 6) return false;
+                if (item.date <= '2026-11-22' && tot < 13) return false;
                 return true;
               })
               .map(function(item) {
@@ -1026,33 +1041,40 @@
         document.getElementById('cmpMonthRate').innerHTML = formatDiffHtml(month.rateDiff, 'g/h');
       }
 
-      function renderLineChart(points) {
+      function renderLineChart(rawPoints) {
         var container = document.getElementById('statsChartContainer');
         var avgEl = document.getElementById('statAvgVal');
         var minEl = document.getElementById('statMinVal');
         var maxEl = document.getElementById('statMaxVal');
 
-        if (!points || points.length === 0) {
+        var isRate = (activeStatsMetric === 'rate');
+        var unit = isRate ? 'g/h' : 'g';
+
+        var points = (rawPoints || []).filter(function(p) {
+          return isRate ? (p.rate !== null && p.rate > 0) : (p.total > 0);
+        });
+
+        if (points.length === 0) {
           avgEl.innerText = '-';
           minEl.innerText = '-';
           maxEl.innerText = '-';
-          container.innerHTML = '<div class="chart-empty">No completed days in this period.</div>';
+          container.innerHTML = '<div class="chart-empty">No data in this period.</div>';
           return;
         }
 
-        var vals = points.map(function(p) { return p.total; });
+        var vals = points.map(function(p) { return isRate ? p.rate : p.total; });
         var sum = vals.reduce(function(a, b) { return a + b; }, 0);
         var avg = sum / vals.length;
         var minVal = Math.min.apply(null, vals);
         var maxVal = Math.max.apply(null, vals);
 
-        avgEl.innerText = avg.toFixed(2) + ' g';
-        minEl.innerText = minVal.toFixed(2) + ' g';
-        maxEl.innerText = maxVal.toFixed(2) + ' g';
+        avgEl.innerText = avg.toFixed(2) + ' ' + unit;
+        minEl.innerText = minVal.toFixed(2) + ' ' + unit;
+        maxEl.innerText = maxVal.toFixed(2) + ' ' + unit;
 
         var W = 360;
         var H = 174;
-        var padL = 36;
+        var padL = 38;
         var padR = 12;
         var padT = 14;
         var padB = 24;
@@ -1062,8 +1084,9 @@
         var yMin = minVal;
         var yMax = maxVal;
         if (yMax === yMin) {
-          yMin = Math.max(0, yMin - 1);
-          yMax = yMax + 1;
+          var stepPad = isRate ? 0.1 : 1;
+          yMin = Math.max(0, yMin - stepPad);
+          yMax = yMax + stepPad;
         } else {
           var margin = (yMax - yMin) * 0.12;
           yMin = Math.max(0, yMin - margin);
@@ -1082,7 +1105,7 @@
         var dotsHtml = '';
         for (var i = 0; i < points.length; i++) {
           var cx = getX(i).toFixed(1);
-          var cy = getY(points[i].total).toFixed(1);
+          var cy = getY(vals[i]).toFixed(1);
           polyPoints.push(cx + ',' + cy);
           if (points.length <= 31) {
             dotsHtml += `<circle cx="${cx}" cy="${cy}" r="2.8" fill="#64b5f6" />`;
@@ -1097,7 +1120,8 @@
         areaPoints.push(firstX + ',' + baseY);
 
         var midY = (padT + plotH / 2).toFixed(1);
-        var midVal = ((yMin + yMax) / 2).toFixed(1);
+        var dec = isRate ? 2 : 1;
+        var midVal = ((yMin + yMax) / 2).toFixed(dec);
 
         var firstDateLabel = points[0].date.substring(5);
         var lastDateLabel = points[points.length - 1].date.substring(5);
@@ -1116,9 +1140,9 @@
             <line x1="${padL}" y1="${midY}" x2="${W - padR}" y2="${midY}" stroke="#222" stroke-width="1" stroke-dasharray="3,3" />
             <line x1="${padL}" y1="${baseY}" x2="${W - padR}" y2="${baseY}" stroke="#222" stroke-width="1" />
 
-            <text x="${padL - 5}" y="${padT + 4}" fill="#666" font-size="9" text-anchor="end">${yMax.toFixed(1)}</text>
+            <text x="${padL - 5}" y="${padT + 4}" fill="#666" font-size="9" text-anchor="end">${yMax.toFixed(dec)}</text>
             <text x="${padL - 5}" y="${parseFloat(midY) + 3}" fill="#666" font-size="9" text-anchor="end">${midVal}</text>
-            <text x="${padL - 5}" y="${parseFloat(baseY) + 3}" fill="#666" font-size="9" text-anchor="end">${yMin.toFixed(1)}</text>
+            <text x="${padL - 5}" y="${parseFloat(baseY) + 3}" fill="#666" font-size="9" text-anchor="end">${yMin.toFixed(dec)}</text>
 
             <text x="${padL}" y="${H - 6}" fill="#666" font-size="9" text-anchor="start">${firstDateLabel}</text>
             ${midDateLabel ? `<text x="${(padL + plotW / 2).toFixed(1)}" y="${H - 6}" fill="#666" font-size="9" text-anchor="middle">${midDateLabel}</text>` : ''}
