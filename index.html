@@ -469,7 +469,7 @@
           <span class="error-code">[{{ activeError.code }}]</span>
           <div class="error-actions">
             <button type="button" class="error-btn" @click="copyErrorReport">{{ copyFeedback || 'Copy' }}</button>
-            <button type="button" class="error-btn" @click="dismissError">×</button>
+            <button type="button" class="error-btn" @click="dismissError">&times;</button>
           </div>
         </div>
         <div class="error-msg-text">{{ activeError.message }}</div>
@@ -608,7 +608,7 @@
                   :value="item.amount"
                   @input="onTableAmountInput($event, item)"
                   @keydown="handleTableAmountKeydown($event, item)"
-                  @blur="triggerTableDoseSync(item)"
+                  @blur="onTableAmountBlur(item)"
                 >
               </td>
             </tr>
@@ -621,7 +621,7 @@
         <div class="modal-box">
           <div class="modal-header">
             <span class="modal-title">Settings</span>
-            <button type="button" class="modal-close" @click="showSettingsModal = false">×</button>
+            <button type="button" class="modal-close" @click="showSettingsModal = false">&times;</button>
           </div>
 
           <div class="modal-section">
@@ -679,7 +679,7 @@
         <div class="modal-box modal-box-wide">
           <div class="modal-header">
             <span class="modal-title">Statistics</span>
-            <button type="button" class="modal-close" @click="showStatsModal = false">×</button>
+            <button type="button" class="modal-close" @click="showStatsModal = false">&times;</button>
           </div>
 
           <div class="range-tabs">
@@ -731,8 +731,11 @@
             <div class="compare-row">
               <span class="compare-label">Daily{{ comparisons.daily.doseIndex ? ' (#' + comparisons.daily.doseIndex + ')' : '' }}</span>
               <span class="compare-vals">
-                <span :style="{ color: comparisons.daily.dose.color }">{{ comparisons.daily.dose.text }}</span>
-                <span :style="{ color: comparisons.daily.rate.color }">{{ comparisons.daily.rate.text }}</span>
+                <span v-if="dailyCompareLoading && comparisons.daily.dose.text === '-'" style="color:#666;">...</span>
+                <template v-else>
+                  <span :style="{ color: comparisons.daily.dose.color }">{{ comparisons.daily.dose.text }}</span>
+                  <span :style="{ color: comparisons.daily.rate.color }">{{ comparisons.daily.rate.text }}</span>
+                </template>
               </span>
             </div>
             <div class="compare-row">
@@ -958,6 +961,33 @@
         document.body.appendChild(script);
       }
 
+      const writeQueue = [];
+      let isProcessingWrite = false;
+
+      function enqueueWrite(params, onSuccess, onError) {
+        writeQueue.push({ params, onSuccess, onError });
+        processNextWrite();
+      }
+
+      function processNextWrite() {
+        if (isProcessingWrite || writeQueue.length === 0) return;
+        isProcessingWrite = true;
+        const job = writeQueue.shift();
+        callApi(
+          job.params,
+          (res) => {
+            isProcessingWrite = false;
+            if (job.onSuccess) job.onSuccess(res);
+            processNextWrite();
+          },
+          (err) => {
+            isProcessingWrite = false;
+            if (job.onError) job.onError(err);
+            processNextWrite();
+          }
+        );
+      }
+
       const app = createApp({
         setup() {
           const activeError = ref(null);
@@ -1001,7 +1031,8 @@
           const fullHistoryPoints = ref([]);
           const historyLoading = ref(false);
           const todayDayStats = ref(null);
-          const yesterdayDayStats = ref(null);
+          const prevDayStats = ref(null);
+          const dailyCompareLoading = ref(false);
 
           const copyErrorReport = async () => {
             if (!activeError.value) return;
@@ -1268,12 +1299,18 @@
             const activeEl = document.activeElement;
             const isEditingTable = activeEl && activeEl.id && (activeEl.id.startsWith('t_time_') || activeEl.id.startsWith('t_amount_'));
             if (!isEditingTable) {
-              tableDoses.value = (data.allDoses || []).map(item => ({
-                doseNumber: item.doseNumber,
-                time: item.time || '',
-                amount: item.amount ? String(item.amount).replace(',', '.') : '',
-                hasData: item.hasData
-              }));
+              tableDoses.value = (data.allDoses || []).map(item => {
+                const t = item.time || '';
+                const a = item.amount ? String(item.amount).replace(',', '.') : '';
+                return {
+                  doseNumber: item.doseNumber,
+                  time: t,
+                  amount: a,
+                  savedTime: t,
+                  savedAmount: a,
+                  hasData: item.hasData
+                };
+              });
             }
             applyDoseRecommendation(data);
           };
@@ -1319,7 +1356,7 @@
 
           const setDayType = (type) => {
             activeDayType.value = type;
-            callApi({ action: 'saveDayType', sheetName: sheetName.value, dateStr: doseDate.value, dayType: type }, (res) => {
+            enqueueWrite({ action: 'saveDayType', sheetName: sheetName.value, dateStr: doseDate.value, dayType: type }, (res) => {
               if (res && res.success) {
                 saveToLocalCache(sheetName.value, doseDate.value, res.stats);
                 hydrateStats(res.stats);
@@ -1335,7 +1372,7 @@
           const onWakeBlur = () => {
             wakeTime.value = normalizeTimeStr(wakeTime.value);
             if (wakeTime.value && wakeTime.value.indexOf(':') === -1) return;
-            callApi({ action: 'saveWakeTime', sheetName: sheetName.value, dateStr: doseDate.value, wakeTime: wakeTime.value }, (res) => {
+            enqueueWrite({ action: 'saveWakeTime', sheetName: sheetName.value, dateStr: doseDate.value, wakeTime: wakeTime.value }, (res) => {
               if (res && res.success) {
                 saveToLocalCache(sheetName.value, doseDate.value, res.stats);
                 hydrateStats(res.stats);
@@ -1439,9 +1476,11 @@
               const updatedDoses = [];
               for (let k = 1; k <= 8; k++) {
                 if (k <= valid.length) {
-                  updatedDoses.push({ doseNumber: k, time: valid[k - 1].time, amount: valid[k - 1].amount.toFixed(2), hasData: true });
+                  const t = valid[k - 1].time;
+                  const a = valid[k - 1].amount.toFixed(2);
+                  updatedDoses.push({ doseNumber: k, time: t, amount: a, savedTime: t, savedAmount: a, hasData: true });
                 } else {
-                  updatedDoses.push({ doseNumber: k, time: '', amount: '', hasData: false });
+                  updatedDoses.push({ doseNumber: k, time: '', amount: '', savedTime: '', savedAmount: '', hasData: false });
                 }
               }
               const curTot = parseFloat(String(stats.value.dailyTotal || '0').replace(' g', '').replace(',', '.').trim()) || 0;
@@ -1462,7 +1501,7 @@
               tableDoses.value = updatedDoses.map(d => ({ ...d }));
             }
 
-            callApi({
+            enqueueWrite({
               action: 'saveDose',
               sheetName: sheetName.value,
               dateStr: doseDate.value,
@@ -1495,13 +1534,24 @@
 
           const onTableTimeBlur = (item) => {
             item.time = normalizeTimeStr(item.time);
-            triggerTableDoseSync(item);
+            setTimeout(() => {
+              const activeId = document.activeElement ? document.activeElement.id : '';
+              if (activeId === 't_amount_' + item.doseNumber) return;
+              commitTableRowIfChanged(item);
+            }, 60);
           };
 
           const onTableAmountInput = (e, item) => {
             item.amount = formatAmountStr(e.target.value);
             e.target.value = item.amount;
-            triggerTableDoseSync(item);
+          };
+
+          const onTableAmountBlur = (item) => {
+            setTimeout(() => {
+              const activeId = document.activeElement ? document.activeElement.id : '';
+              if (activeId === 't_time_' + item.doseNumber) return;
+              commitTableRowIfChanged(item);
+            }, 60);
           };
 
           const handleTableAmountKeydown = (e, item) => {
@@ -1511,14 +1561,9 @@
               return;
             }
             if (e.key === 'Backspace' || e.key === 'Delete') {
-              if (item.amount.trim() !== '') {
-                e.preventDefault();
-                item.amount = '';
-                executeEntryDeletion(item);
-              } else if (item.time.trim() !== '') {
+              if (item.amount.trim() === '' && item.time.trim() !== '') {
                 e.preventDefault();
                 item.time = '';
-                executeEntryDeletion(item);
                 const tEl = document.getElementById('t_time_' + item.doseNumber);
                 if (tEl) tEl.focus();
               }
@@ -1541,41 +1586,55 @@
             if (!isUserModified.value) applyDoseRecommendation(stats.value);
           };
 
-          const executeEntryDeletion = (item) => {
-            item.amount = '';
-            safeStorageRemove(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${item.doseNumber}`);
-            liveRateParams.value = null;
-            recomputeLocalTableSummary();
-            callApi({
-              action: 'saveSingleDoseSilent',
-              sheetName: sheetName.value,
-              dateStr: doseDate.value,
-              doseNumber: item.doseNumber,
-              time: item.time.trim(),
-              amount: 0
-            }, (res) => {
-              if (res && res.success && res.stats) {
-                saveToLocalCache(sheetName.value, doseDate.value, res.stats);
-                hydrateStats(res.stats);
-              }
-            }, () => { loadStats(); });
-          };
-
-          const triggerTableDoseSync = (item) => {
-            item.time = normalizeTimeStr(item.time);
+          const commitTableRowIfChanged = (item) => {
+            const normTime = normalizeTimeStr(item.time);
+            item.time = normTime;
             const cleanAmt = getParsedAmount(item.amount);
-            if (cleanAmt <= 0 && !item.amount.trim()) {
-              executeEntryDeletion(item);
+            const normAmtStr = cleanAmt > 0 ? cleanAmt.toFixed(2) : '';
+
+            if (normTime === (item.savedTime || '') && normAmtStr === (item.savedAmount || '')) {
               return;
             }
+
+            if (cleanAmt <= 0 && !(item.savedAmount && getParsedAmount(item.savedAmount) > 0)) {
+              return;
+            }
+
+            if (cleanAmt <= 0) {
+              item.amount = '';
+              item.time = '';
+              item.savedTime = '';
+              item.savedAmount = '';
+              safeStorageRemove(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${item.doseNumber}`);
+              liveRateParams.value = null;
+              recomputeLocalTableSummary();
+              enqueueWrite({
+                action: 'saveSingleDoseSilent',
+                sheetName: sheetName.value,
+                dateStr: doseDate.value,
+                doseNumber: item.doseNumber,
+                time: '',
+                amount: 0
+              }, (res) => {
+                if (res && res.success && res.stats) {
+                  saveToLocalCache(sheetName.value, doseDate.value, res.stats);
+                  hydrateStats(res.stats);
+                }
+              }, () => { loadStats(); });
+              return;
+            }
+
+            item.amount = normAmtStr;
+            item.savedTime = normTime;
+            item.savedAmount = normAmtStr;
             liveRateParams.value = null;
             recomputeLocalTableSummary();
-            callApi({
+            enqueueWrite({
               action: 'saveSingleDoseSilent',
               sheetName: sheetName.value,
               dateStr: doseDate.value,
               doseNumber: item.doseNumber,
-              time: item.time.trim(),
+              time: normTime,
               amount: cleanAmt
             }, (res) => {
               if (res && res.success && res.stats) {
@@ -1620,6 +1679,11 @@
           };
 
           /* --- STATISTICS MODAL --- */
+          const getValidDoseCount = (dayStats) => {
+            if (!dayStats || !Array.isArray(dayStats.allDoses)) return 0;
+            return dayStats.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length;
+          };
+
           const getLocalCachedHistory = () => {
             const todayStr = getTodayDateStr();
             const cutoffStr = getDateStrOffset(95);
@@ -1654,11 +1718,28 @@
             return results.sort((a, b) => a.date.localeCompare(b.date));
           };
 
+          const fetchPrevDayForComparison = (targetDateStr, onDone) => {
+            const cached = safeStorageGet(`taper_fast_cache_v24_${sheetName.value}_${targetDateStr}`, true);
+            if (cached && cached.found && getValidDoseCount(cached) > 0) {
+              prevDayStats.value = cached;
+            }
+            callApi({ action: 'getStats', sheetName: sheetName.value, dateStr: targetDateStr }, (data) => {
+              if (data && data.found && getValidDoseCount(data) > 0) {
+                prevDayStats.value = data;
+                saveToLocalCache(sheetName.value, targetDateStr, data);
+              }
+              if (onDone) onDone(data);
+            }, () => {
+              if (onDone) onDone(null);
+            });
+          };
+
           const openStatsModal = () => {
             showSettingsModal.value = false;
             showStatsModal.value = true;
             fullHistoryPoints.value = getLocalCachedHistory();
             historyLoading.value = true;
+            dailyCompareLoading.value = true;
 
             const todayStr = getTodayDateStr();
             const yestStr = getDateStrOffset(1);
@@ -1666,7 +1747,7 @@
             todayDayStats.value = (doseDate.value === todayStr && stats.value && stats.value.found)
               ? stats.value
               : safeStorageGet(`taper_fast_cache_v24_${sheetName.value}_${todayStr}`, true);
-            yesterdayDayStats.value = safeStorageGet(`taper_fast_cache_v24_${sheetName.value}_${yestStr}`, true);
+            prevDayStats.value = null;
 
             if (doseDate.value !== todayStr || !todayDayStats.value) {
               callApi({ action: 'getStats', sheetName: sheetName.value, dateStr: todayStr }, (data) => {
@@ -1677,11 +1758,9 @@
               });
             }
 
-            callApi({ action: 'getStats', sheetName: sheetName.value, dateStr: yestStr }, (data) => {
-              if (data && data.found) {
-                yesterdayDayStats.value = data;
-                saveToLocalCache(sheetName.value, yestStr, data);
-              }
+            // First try yesterday
+            fetchPrevDayForComparison(yestStr, () => {
+              dailyCompareLoading.value = false;
             });
 
             callApi({ action: 'getHistory', sheetName: sheetName.value, days: 90 }, (res) => {
@@ -1704,7 +1783,22 @@
                     count: parseInt(item.count, 10) || 0
                   }))
                   .sort((a, b) => a.date.localeCompare(b.date));
-                if (filtered.length > 0) fullHistoryPoints.value = filtered;
+
+                if (filtered.length > 0) {
+                  fullHistoryPoints.value = filtered;
+                  // Fallback: if yesterday had no valid data, load the most recent previous logged day
+                  const tCount = getValidDoseCount(todayDayStats.value);
+                  if (getValidDoseCount(prevDayStats.value) < Math.max(1, tCount)) {
+                    const prevDays = filtered.filter(p => p.date < todayStr && p.count >= Math.max(1, tCount));
+                    const fallbackDay = prevDays.length > 0 ? prevDays[prevDays.length - 1] : filtered.filter(p => p.date < todayStr).pop();
+                    if (fallbackDay && fallbackDay.date !== yestStr) {
+                      dailyCompareLoading.value = true;
+                      fetchPrevDayForComparison(fallbackDay.date, () => {
+                        dailyCompareLoading.value = false;
+                      });
+                    }
+                  }
+                }
               }
             }, () => { historyLoading.value = false; });
           };
@@ -1811,15 +1905,15 @@
             if (!tStats || !Array.isArray(tStats.allDoses)) {
               return { doseIndex: 0, dose: formatDiffObj(null, 'g'), rate: formatDiffObj(null, 'g/h') };
             }
-            const n = tStats.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length;
+            const n = getValidDoseCount(tStats);
             if (n === 0) {
               return { doseIndex: 0, dose: formatDiffObj(null, 'g'), rate: formatDiffObj(null, 'g/h') };
             }
             const todaySnap = getDoseSnapshot(tStats, n);
-            const yestSnap = getDoseSnapshot(yesterdayDayStats.value, n);
-            const doseDiff = (todaySnap && yestSnap) ? (todaySnap.total - yestSnap.total) : null;
-            const rateDiff = (todaySnap && yestSnap && todaySnap.rate !== null && yestSnap.rate !== null)
-              ? (todaySnap.rate - yestSnap.rate)
+            const prevSnap = getDoseSnapshot(prevDayStats.value, n);
+            const doseDiff = (todaySnap && prevSnap) ? (todaySnap.total - prevSnap.total) : null;
+            const rateDiff = (todaySnap && prevSnap && todaySnap.rate !== null && prevSnap.rate !== null)
+              ? (todaySnap.rate - prevSnap.rate)
               : null;
             return {
               doseIndex: n,
@@ -1895,13 +1989,13 @@
             stats, tableDoses, loading,
             currentCap, isAmountNegative, liveAwake, liveElapsed, preview,
             showSettingsModal, settingsForm,
-            showStatsModal, activeStatsMetric, activeStatsRange, historyLoading,
+            showStatsModal, activeStatsMetric, activeStatsRange, historyLoading, dailyCompareLoading,
             chartStats, chartData, comparisons,
             formatAmountStr, cleanDisplay,
             loadStats, onProfileChange, setDayType,
             onWakeInput, onWakeBlur, onManualTimeInput, onTimeBlur,
             onAmountInput, handleDoseContainerClick, handleAmountBlur, autoSubmit,
-            onTableTimeInput, onTableTimeBlur, onTableAmountInput, handleTableAmountKeydown, triggerTableDoseSync,
+            onTableTimeInput, onTableTimeBlur, onTableAmountInput, onTableAmountBlur, handleTableAmountKeydown,
             openSettingsModal, saveSettingsModal, openStatsModal
           };
         }
