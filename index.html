@@ -524,4 +524,1316 @@
         <button type="button" class="settings-btn" @click="openSettingsModal" aria-label="Settings">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Day Type -->
+      <div v-if="sheetName === 'Kori'" class="day-type-container">
+        <button type="button" class="day-type-btn" :class="{ active: activeDayType === 'Szabadnap' }" @click="setDayType('Szabadnap')">Off</button>
+        <button type="button" class="day-type-btn" :class="{ active: activeDayType === 'Munkanap' }" @click="setDayType('Munkanap')">Work</button>
+      </div>
+
+      <!-- Main Dose Input -->
+      <form @submit.prevent="autoSubmit" class="dose-container" @click="handleDoseContainerClick">
+        <input
+          type="text"
+          id="amount"
+          class="dose-input"
+          placeholder="0.00"
+          inputmode="numeric"
+          enterkeyhint="done"
+          :value="amount"
+          :style="{ color: isAmountNegative ? '#ef5350' : '#ffffff' }"
+          @click.stop
+          @input="onAmountInput"
+          @keydown.enter.prevent="autoSubmit"
+          @blur="handleAmountBlur"
+        >
+        <div v-if="preview.visible" class="preview-box">
+          <div class="preview-grid">
+            <div>Total: <span class="preview-item">{{ preview.total }}</span></div>
+            <div>Diff: <span class="preview-item">{{ preview.diff }}</span></div>
+            <div>Rate: <span class="preview-item" :style="{ color: preview.rateColor }">{{ preview.rateText }}</span></div>
+          </div>
+        </div>
+      </form>
+
+      <!-- Summary Card -->
+      <div class="card">
+        <div v-if="loading && !stats" class="loading">Loading...</div>
+        <div v-else-if="!stats || !stats.found" style="color: #666; font-size: 12px; text-align: center; padding: 8px;">No entries for this day.</div>
+        <template v-else>
+          <div class="stat-row"><span class="stat-label">Elapsed</span><span class="stat-value">{{ liveElapsed }}</span></div>
+          <div class="stat-row"><span class="stat-label">Awake</span><span class="stat-value">{{ liveAwake }}</span></div>
+          <div class="stat-row"><span class="stat-label">Max</span><span class="stat-value">{{ currentCap.toFixed(2) }} g</span></div>
+          <div class="stat-row"><span class="stat-label">Total</span><span class="stat-value">{{ cleanDisplay(stats.dailyTotal) }}</span></div>
+          <div class="stat-row"><span class="stat-label">Average</span><span class="stat-value">{{ cleanDisplay(stats.avgDose) }}</span></div>
+          <div class="stat-row"><span class="stat-label">Interval</span><span class="stat-value">{{ cleanDisplay(stats.avgInterval) }}</span></div>
+        </template>
+      </div>
+
+      <!-- Entries Card -->
+      <div class="card">
+        <div v-if="loading && !stats" class="loading">Loading...</div>
+        <div v-else-if="!stats || !stats.found" style="color: #666; font-size: 12px; text-align: center; padding: 8px;">No data.</div>
+        <table v-else class="doses-table">
+          <tbody>
+            <tr v-for="item in tableDoses" :key="item.doseNumber">
+              <td style="color: #666; font-size: 12px; font-weight: 500; text-align: center; width: 34px; padding-left: 2px; padding-right: 6px;">{{ item.doseNumber }}</td>
+              <td style="width: 48%; padding-right: 4px;">
+                <input
+                  type="text"
+                  :id="'t_time_' + item.doseNumber"
+                  class="table-input"
+                  maxlength="5"
+                  inputmode="numeric"
+                  enterkeyhint="done"
+                  placeholder="00:00"
+                  :value="item.time"
+                  @input="onTableTimeInput($event, item)"
+                  @keydown.enter.prevent="$event.target.blur()"
+                  @blur="onTableTimeBlur(item)"
+                >
+              </td>
+              <td style="width: 48%; padding-left: 4px;">
+                <input
+                  type="text"
+                  :id="'t_amount_' + item.doseNumber"
+                  class="table-input"
+                  inputmode="numeric"
+                  enterkeyhint="done"
+                  placeholder="0.00"
+                  :value="item.amount"
+                  @input="onTableAmountInput($event, item)"
+                  @keydown="handleTableAmountKeydown($event, item)"
+                  @blur="triggerTableDoseSync(item)"
+                >
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Settings Modal -->
+      <div v-if="showSettingsModal" class="modal-overlay" @click.self="showSettingsModal = false">
+        <div class="modal-box">
+          <div class="modal-header">
+            <span class="modal-title">Settings</span>
+            <button type="button" class="modal-close" @click="showSettingsModal = false">×</button>
+          </div>
+
+          <div class="modal-section">
+            <div class="slider-header">
+              <label for="settingsDaysSlider" style="margin: 0;">Step every</label>
+              <span class="slider-value">{{ settingsForm.days }} days</span>
+            </div>
+            <input
+              type="range"
+              id="settingsDaysSlider"
+              class="settings-slider"
+              min="1"
+              max="10"
+              step="1"
+              v-model.number="settingsForm.days"
+            >
+          </div>
+
+          <div class="modal-inputs-row">
+            <div class="modal-input-block">
+              <label for="settingsMaxInput">Max (g)</label>
+              <input
+                type="text"
+                id="settingsMaxInput"
+                class="modal-num-input"
+                inputmode="numeric"
+                enterkeyhint="done"
+                :value="settingsForm.max"
+                @input="settingsForm.max = formatAmountStr($event.target.value)"
+                @keydown.enter.prevent="saveSettingsModal"
+              >
+            </div>
+            <div class="modal-input-block">
+              <label for="settingsRateInput">Rate (g/h)</label>
+              <input
+                type="text"
+                id="settingsRateInput"
+                class="modal-num-input"
+                inputmode="numeric"
+                enterkeyhint="done"
+                :value="settingsForm.rate"
+                @input="settingsForm.rate = formatAmountStr($event.target.value)"
+                @keydown.enter.prevent="saveSettingsModal"
+              >
+            </div>
+          </div>
+
+          <button type="button" class="modal-secondary-btn" @click="openStatsModal">Statistics</button>
+          <button type="button" class="modal-save-btn" @click="saveSettingsModal">Save</button>
+        </div>
+      </div>
+
+      <!-- Statistics Modal -->
+      <div v-if="showStatsModal" class="modal-overlay" @click.self="showStatsModal = false">
+        <div class="modal-box modal-box-wide">
+          <div class="modal-header">
+            <span class="modal-title">Statistics</span>
+            <button type="button" class="modal-close" @click="showStatsModal = false">×</button>
+          </div>
+
+          <div class="range-tabs">
+            <button type="button" class="range-tab" :class="{ active: activeStatsMetric === 'total' }" @click="activeStatsMetric = 'total'">Total (g)</button>
+            <button type="button" class="range-tab" :class="{ active: activeStatsMetric === 'rate' }" @click="activeStatsMetric = 'rate'">Rate (g/h)</button>
+          </div>
+
+          <div class="range-tabs" style="margin-bottom: 12px;">
+            <button type="button" class="range-tab" :class="{ active: activeStatsRange === 7 }" @click="activeStatsRange = 7">7 Days</button>
+            <button type="button" class="range-tab" :class="{ active: activeStatsRange === 30 }" @click="activeStatsRange = 30">1 Month</button>
+            <button type="button" class="range-tab" :class="{ active: activeStatsRange === 90 }" @click="activeStatsRange = 90">3 Months</button>
+          </div>
+
+          <div class="stats-summary-bar">
+            <div class="stats-summary-item"><span>Avg</span><strong>{{ chartStats.avg }}</strong></div>
+            <div class="stats-summary-item"><span>Min</span><strong>{{ chartStats.min }}</strong></div>
+            <div class="stats-summary-item"><span>Max</span><strong>{{ chartStats.max }}</strong></div>
+          </div>
+
+          <div class="chart-container">
+            <div v-if="historyLoading && chartData.points.length === 0" class="chart-empty">Loading...</div>
+            <div v-else-if="chartData.points.length === 0" class="chart-empty">No data in this period.</div>
+            <svg v-else viewBox="0 0 360 174" width="100%" height="100%" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="lineAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#64b5f6" stop-opacity="0.28"/>
+                  <stop offset="100%" stop-color="#64b5f6" stop-opacity="0.0"/>
+                </linearGradient>
+              </defs>
+              <line x1="38" y1="14" x2="348" y2="14" stroke="#222" stroke-width="1" />
+              <line x1="38" y1="82" x2="348" y2="82" stroke="#222" stroke-width="1" stroke-dasharray="3,3" />
+              <line x1="38" y1="150" x2="348" y2="150" stroke="#222" stroke-width="1" />
+
+              <text x="33" y="18" fill="#666" font-size="9" text-anchor="end">{{ chartData.yMaxLabel }}</text>
+              <text x="33" y="85" fill="#666" font-size="9" text-anchor="end">{{ chartData.yMidLabel }}</text>
+              <text x="33" y="153" fill="#666" font-size="9" text-anchor="end">{{ chartData.yMinLabel }}</text>
+
+              <text x="38" y="168" fill="#666" font-size="9" text-anchor="start">{{ chartData.firstDate }}</text>
+              <text v-if="chartData.midDate" x="193" y="168" fill="#666" font-size="9" text-anchor="middle">{{ chartData.midDate }}</text>
+              <text v-if="chartData.points.length > 1" x="348" y="168" fill="#666" font-size="9" text-anchor="end">{{ chartData.lastDate }}</text>
+
+              <polygon v-if="chartData.points.length > 1" :points="chartData.areaPoints" fill="url(#lineAreaGrad)" />
+              <polyline v-if="chartData.points.length > 1" :points="chartData.polyPoints" fill="none" stroke="#64b5f6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+              <circle v-for="(pt, idx) in chartData.dots" :key="idx" :cx="pt.x" :cy="pt.y" r="2.8" fill="#64b5f6" />
+            </svg>
+          </div>
+
+          <div class="stats-compare-box">
+            <div class="compare-row">
+              <span class="compare-label">Weekly</span>
+              <span class="compare-vals">
+                <span :style="{ color: comparisons.week.dose.color }">{{ comparisons.week.dose.text }}</span>
+                <span :style="{ color: comparisons.week.rate.color }">{{ comparisons.week.rate.text }}</span>
+              </span>
+            </div>
+            <div class="compare-row">
+              <span class="compare-label">Monthly</span>
+              <span class="compare-vals">
+                <span :style="{ color: comparisons.month.dose.color }">{{ comparisons.month.dose.text }}</span>
+                <span :style="{ color: comparisons.month.rate.color }">{{ comparisons.month.rate.text }}</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const { createApp, ref, reactive, computed, onMounted } = Vue;
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwLunA0503U9F0PElqt4IXJ7e2OFIFURAZVApI8IUuVafVlDA65Ijk6zxcRORWC8X0/exec";
+      const API_TIMEOUT_MS = 12000;
+
+      // Global error registry for inspection & auto-correction
+      window.__DAILY_LOG_ERRORS__ = [];
+      let globalErrorReporter = null;
+
+      function reportAppError(code, message, context = {}, errObj = null) {
+        const entry = {
+          timestamp: new Date().toISOString(),
+          code: String(code || 'ERR_UNKNOWN'),
+          message: String(message || 'Unexpected error'),
+          context,
+          stack: errObj && errObj.stack ? String(errObj.stack).split('\n').slice(0, 6).join('\n') : null
+        };
+        window.__DAILY_LOG_ERRORS__.push(entry);
+        if (window.__DAILY_LOG_ERRORS__.length > 30) window.__DAILY_LOG_ERRORS__.shift();
+        console.error(`[${entry.code}] ${entry.message}`, entry);
+        if (globalErrorReporter) globalErrorReporter(entry);
+        return entry;
+      }
+
+      window.addEventListener('error', (event) => {
+        reportAppError(
+          'ERR_RUNTIME',
+          event.message || 'Uncaught runtime error',
+          { filename: event.filename, lineno: event.lineno, colno: event.colno },
+          event.error
+        );
+      });
+
+      window.addEventListener('unhandledrejection', (event) => {
+        const reason = event.reason;
+        reportAppError(
+          'ERR_PROMISE',
+          (reason && reason.message) ? reason.message : String(reason || 'Unhandled promise rejection'),
+          {},
+          reason instanceof Error ? reason : null
+        );
+      });
+
+      function safeStorageGet(key, parseJson = false) {
+        try {
+          const raw = localStorage.getItem(key);
+          if (raw === null) return null;
+          if (!parseJson) return raw;
+          return JSON.parse(raw);
+        } catch (err) {
+          // Auto-heal corrupted JSON key
+          try { localStorage.removeItem(key); } catch (_) {}
+          reportAppError('ERR_STORAGE_READ', `Corrupted storage key auto-cleared: ${key}`, { key }, err);
+          return null;
+        }
+      }
+
+      function safeStorageSet(key, value) {
+        try {
+          const serialized = typeof value === 'string' ? value : JSON.stringify(value);
+          localStorage.setItem(key, serialized);
+          return true;
+        } catch (err) {
+          reportAppError('ERR_STORAGE_WRITE', `Failed to save local data (${key})`, { key }, err);
+          return false;
+        }
+      }
+
+      function safeStorageRemove(key) {
+        try {
+          localStorage.removeItem(key);
+        } catch (err) {
+          reportAppError('ERR_STORAGE_REMOVE', `Failed to remove local key (${key})`, { key }, err);
+        }
+      }
+
+      function getTodayDateStr() {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      }
+
+      function getDateStrOffset(daysAgo) {
+        const d = new Date();
+        d.setDate(d.getDate() - daysAgo);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      }
+
+      function getParsedAmount(rawVal) {
+        if (!rawVal) return 0;
+        const num = parseFloat(String(rawVal).replace(',', '.').trim());
+        return isNaN(num) ? 0 : num;
+      }
+
+      function parseTimeToMinutes(timeStr) {
+        if (!timeStr || timeStr.indexOf(':') === -1) return null;
+        const [h, m] = timeStr.split(':').map(v => parseInt(v, 10));
+        return (isNaN(h) || isNaN(m)) ? null : h * 60 + m;
+      }
+
+      function buildSmartTimeDigits(rawVal) {
+        const rawDigits = String(rawVal || '').replace(/[^0-9]/g, '');
+        let out = '';
+        for (let i = 0; i < rawDigits.length; i++) {
+          const d = rawDigits[i];
+          const len = out.length;
+          if (len === 0) {
+            out += (d >= '3' && d <= '9') ? ('0' + d) : d;
+          } else if (len === 1) {
+            if (out[0] === '2' && d >= '4') {
+              out = (d >= '6') ? ('020' + d) : ('02' + d);
+            } else {
+              out += d;
+            }
+          } else if (len === 2) {
+            out += (d >= '6' && d <= '9') ? ('0' + d) : d;
+          } else if (len === 3) {
+            out += d;
+          }
+          if (out.length >= 4) break;
+        }
+        return out.substring(0, 4);
+      }
+
+      function formatTimeStr(rawVal) {
+        const digits = buildSmartTimeDigits(rawVal);
+        return digits.length >= 3 ? `${digits.substring(0, 2)}:${digits.substring(2, 4)}` : digits;
+      }
+
+      function normalizeTimeStr(rawVal) {
+        const val = String(rawVal || '').trim();
+        if (!val) return '';
+        const digits = buildSmartTimeDigits(val);
+        if (digits.length === 1 || digits.length === 2) {
+          const h = parseInt(digits, 10);
+          return (h < 10 ? '0' + h : h) + ':00';
+        }
+        if (digits.length === 3) return `${digits.substring(0, 2)}:0${digits.substring(2, 3)}`;
+        return `${digits.substring(0, 2)}:${digits.substring(2, 4)}`;
+      }
+
+      function formatAmountStr(rawVal) {
+        const raw = String(rawVal || '').replace(',', '.');
+        const isNeg = raw.startsWith('-');
+        const digits = raw.replace(/[^0-9]/g, '');
+        if (!digits) return isNeg ? '-' : '';
+        const formatted = digits.length === 1 ? digits : `${digits.substring(0, 1)}.${digits.substring(1, 3)}`;
+        return (isNeg ? '-' : '') + formatted;
+      }
+
+      function parseRateNumber(raw) {
+        if (raw === null || raw === undefined) return null;
+        const n = parseFloat(String(raw).replace(/,/g, '.').replace(/[^0-9.]/g, ''));
+        return (!isNaN(n) && n > 0) ? n : null;
+      }
+
+      function callApi(params, onSuccess, onError) {
+        const callbackName = 'jsonp_cb_' + Math.round(1000000 * Math.random());
+        const script = document.createElement('script');
+        let settled = false;
+
+        const cleanup = () => {
+          clearTimeout(timer);
+          delete window[callbackName];
+          if (script.parentNode) script.parentNode.removeChild(script);
+        };
+
+        const fail = (code, msg) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          const errEntry = reportAppError(code, msg, { action: params.action, params });
+          if (onError) onError(errEntry);
+        };
+
+        const timer = setTimeout(() => {
+          fail('ERR_TIMEOUT', `Server did not respond within ${API_TIMEOUT_MS / 1000}s (${params.action})`);
+        }, API_TIMEOUT_MS);
+
+        window[callbackName] = (data) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          if (!data || typeof data !== 'object') {
+            const errEntry = reportAppError('ERR_INVALID_RESPONSE', `Invalid response payload (${params.action})`, { action: params.action, raw: data });
+            if (onError) onError(errEntry);
+            return;
+          }
+          if (data.success === false && data.error) {
+            const errEntry = reportAppError('ERR_API', data.error, { action: params.action, params });
+            if (onError) onError(errEntry);
+            return;
+          }
+          try {
+            onSuccess(data);
+          } catch (err) {
+            const errEntry = reportAppError('ERR_HANDLER', `Error processing response for ${params.action}: ${err.message}`, { action: params.action }, err);
+            if (onError) onError(errEntry);
+          }
+        };
+
+        const query = Object.keys(params).map(k => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`).join('&');
+        script.src = `${APPS_SCRIPT_URL}?${query}&callback=${callbackName}&_ts=${Date.now()}`;
+        script.onerror = () => fail('ERR_NETWORK', `Failed to reach Google Apps Script (${params.action})`);
+        document.body.appendChild(script);
+      }
+
+      const app = createApp({
+        setup() {
+          const activeError = ref(null);
+          const copyFeedback = ref('');
+
+          globalErrorReporter = (entry) => {
+            activeError.value = entry;
+          };
+
+          const dismissError = () => {
+            activeError.value = null;
+            copyFeedback.value = '';
+          };
+
+          const sheetName = ref(safeStorageGet('taper_active_profile') || 'Kori');
+          const doseDate = ref(getTodayDateStr());
+          const wakeTime = ref('');
+          const time = ref(new Date().toTimeString().substring(0, 5));
+          const amount = ref('');
+          const activeDayType = ref('Szabadnap');
+
+          const stats = ref(null);
+          const tableDoses = ref([]);
+          const loading = ref(false);
+
+          const isSaving = ref(false);
+          const isUserModified = ref(false);
+          const isManualTimeSet = ref(false);
+          const lastRawRecommendation = ref(null);
+          const liveRateParams = ref(null);
+          const currentTypingRate = ref(null);
+          const nowTick = ref(Date.now());
+          const settingsVersion = ref(0);
+
+          const showSettingsModal = ref(false);
+          const settingsForm = reactive({ days: 2, max: '3.67', rate: '1.19' });
+
+          const showStatsModal = ref(false);
+          const activeStatsMetric = ref('total');
+          const activeStatsRange = ref(7);
+          const fullHistoryPoints = ref([]);
+          const historyLoading = ref(false);
+
+          const copyErrorReport = async () => {
+            if (!activeError.value) return;
+            const payload = JSON.stringify({
+              error: activeError.value,
+              state: {
+                profile: sheetName.value,
+                date: doseDate.value,
+                wakeTime: wakeTime.value,
+                time: time.value,
+                amount: amount.value,
+                dayType: activeDayType.value,
+                isSaving: isSaving.value
+              }
+            }, null, 2);
+            try {
+              await navigator.clipboard.writeText(payload);
+              copyFeedback.value = 'Copied';
+              setTimeout(() => { copyFeedback.value = ''; }, 1500);
+            } catch (e) {
+              copyFeedback.value = 'Failed';
+            }
+          };
+
+          const getStepDays = () => {
+            settingsVersion.value;
+            const days = parseInt(safeStorageGet('taper_step_days_v1_' + sheetName.value), 10);
+            return (isNaN(days) || days < 1 || days > 10) ? 2 : days;
+          };
+
+          const getDoseCap = (dateStr) => {
+            settingsVersion.value;
+            const stepDays = getStepDays();
+            let baseDate = new Date(2026, 10, 10);
+            let baseCap = 3.67;
+            const parsed = safeStorageGet('taper_custom_cap_anchor_v1_' + sheetName.value, true);
+            if (parsed && parsed.dateStr && !isNaN(parseFloat(parsed.cap))) {
+              const bp = parsed.dateStr.split('-');
+              if (bp.length === 3) {
+                baseDate = new Date(parseInt(bp[0], 10), parseInt(bp[1], 10) - 1, parseInt(bp[2], 10));
+                baseCap = parseFloat(parsed.cap);
+              }
+            }
+            const parts = (dateStr || '').split('-');
+            if (parts.length === 3) {
+              const cur = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+              const diffDays = Math.floor((cur.getTime() - baseDate.getTime()) / 86400000);
+              const steps = Math.floor(diffDays / stepDays);
+              return Math.max(0.1, parseFloat((baseCap - steps * 0.01).toFixed(2)));
+            }
+            return baseCap;
+          };
+
+          const getRecommendationRate = (dateStr) => {
+            settingsVersion.value;
+            const stepDays = getStepDays();
+            let baseDate = new Date(2026, 10, 18);
+            let baseRate = 1.19;
+            const parsed = safeStorageGet('taper_custom_rate_anchor_v1_' + sheetName.value, true);
+            if (parsed && parsed.dateStr && !isNaN(parseFloat(parsed.rate))) {
+              const bp = parsed.dateStr.split('-');
+              if (bp.length === 3) {
+                baseDate = new Date(parseInt(bp[0], 10), parseInt(bp[1], 10) - 1, parseInt(bp[2], 10));
+                baseRate = parseFloat(parsed.rate);
+              }
+            }
+            const parts = (dateStr || '').split('-');
+            if (parts.length === 3) {
+              const cur = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+              const diffDays = Math.floor((cur.getTime() - baseDate.getTime()) / 86400000);
+              const steps = Math.floor(diffDays / stepDays);
+              return Math.max(0.1, parseFloat((baseRate - steps * 0.01).toFixed(2)));
+            }
+            return baseRate;
+          };
+
+          const currentCap = computed(() => getDoseCap(doseDate.value));
+          const currentRecRate = computed(() => getRecommendationRate(doseDate.value));
+          const isAmountNegative = computed(() => String(amount.value || '').trim().startsWith('-'));
+
+          const liveAwake = computed(() => {
+            nowTick.value;
+            const wVal = (wakeTime.value || (stats.value && stats.value.wakeTime) || '').trim();
+            const wakeM = parseTimeToMinutes(wVal);
+            if (wakeM === null) return '-';
+            const now = new Date();
+            let diffMin = (now.getHours() * 60 + now.getMinutes()) - wakeM;
+            if (diffMin < 0) diffMin += 1440;
+            return `${String(Math.floor(diffMin / 60)).padStart(2, '0')}:${String(diffMin % 60).padStart(2, '0')}`;
+          });
+
+          const liveElapsed = computed(() => {
+            nowTick.value;
+            const last = stats.value && stats.value.lastDose;
+            if (!last || !last.time) return '-';
+            const parts = last.time.split(':');
+            if (parts.length < 2) return '-';
+            const lastDate = new Date();
+            lastDate.setHours(parseInt(parts[0], 10), parseInt(parts[1], 10), 0, 0);
+            let diffMs = Date.now() - lastDate.getTime();
+            if (diffMs < 0) diffMs += 86400000;
+            const totalMinutes = Math.floor(diffMs / 60000);
+            const h = Math.floor(totalMinutes / 60);
+            const m = totalMinutes % 60;
+            return h === 0 ? `${m} min` : `${h} h ${String(m).padStart(2, '0')} min`;
+          });
+
+          const preview = computed(() => {
+            nowTick.value;
+            const raw = String(amount.value || '').replace(',', '.');
+            const amtVal = getParsedAmount(raw);
+            const isNeg = raw.trim().startsWith('-');
+            if ((amtVal <= 0 && !isNeg) || !stats.value) {
+              return { visible: false, total: '-', diff: '-', rateText: '-', rateColor: '#888' };
+            }
+            const curTot = parseFloat(String(stats.value.dailyTotal || '0').replace(' g', '').replace(',', '.').trim()) || 0;
+            const newTotal = (isNeg ? curTot : curTot + amtVal).toFixed(2) + ' g';
+
+            const last = stats.value.lastDose;
+            let diffText = '-';
+            if (last && last.amount && !isNeg) {
+              const lastAmt = parseFloat(String(last.amount).replace(',', '.').trim()) || 0;
+              const d = (amtVal - lastAmt).toFixed(2);
+              diffText = (parseFloat(d) > 0 ? '+' : '') + d + ' g';
+            }
+
+            const recordedCount = (stats.value.allDoses || []).filter(d => d.hasData).length;
+            if (recordedCount === 0 && !isNeg) {
+              return { visible: true, total: newTotal, diff: diffText, rateText: '-', rateColor: '#888' };
+            }
+
+            const recRate = currentRecRate.value;
+            let resultingRate = recRate;
+            const curM = parseTimeToMinutes(time.value.trim());
+            const lastM = (last && last.time) ? parseTimeToMinutes(last.time) : null;
+
+            if (isNeg || amtVal === 0) {
+              if (liveRateParams.value) {
+                const p = liveRateParams.value;
+                let elapsedH = 0;
+                if (curM !== null && lastM !== null) {
+                  let dM = curM - lastM;
+                  if (dM < 0) dM += 1440;
+                  elapsedH = dM / 60;
+                }
+                const currentNet = p.initialDelta + p.recRate * elapsedH;
+                resultingRate = (currentNet < -0.005 && p.lastIntHours > 0) ? (p.recRate + (-currentNet / p.lastIntHours)) : p.recRate;
+              }
+              const col = (resultingRate > recRate + 0.005) ? '#ef5350' : '#81c784';
+              return { visible: true, total: newTotal, diff: diffText, rateText: `${resultingRate.toFixed(2)} g/h`, rateColor: col };
+            }
+
+            if (curM !== null && lastM !== null) {
+              let diffMin = curM - lastM;
+              if (diffMin < 0) diffMin += 1440;
+              const intHours = diffMin / 60;
+              if (intHours > 0) {
+                let initialDelta = 0;
+                if (recordedCount >= 1) {
+                  const savedDiff = safeStorageGet(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${recordedCount}`);
+                  if (savedDiff !== null && !isNaN(parseFloat(savedDiff))) initialDelta = parseFloat(savedDiff);
+                }
+                const exactRec = initialDelta + recRate * intHours;
+                resultingRate = (amtVal > exactRec + 0.005) ? ((amtVal - initialDelta) / intHours) : recRate;
+              }
+            }
+
+            currentTypingRate.value = resultingRate;
+            const col = (resultingRate <= recRate && !isNeg) ? '#81c784' : '#ef5350';
+            return { visible: true, total: newTotal, diff: diffText, rateText: `${resultingRate.toFixed(2)} g/h`, rateColor: col };
+          });
+
+          const saveToLocalCache = (sName, dStr, data) => {
+            safeStorageSet(`taper_fast_cache_v24_${sName}_${dStr}`, data);
+          };
+
+          const syncLiveRateParams = (data) => {
+            const last = data.lastDose;
+            if (!last) return;
+            const validDoses = (data.allDoses || []).filter(d => d.hasData && getParsedAmount(d.amount) > 0);
+            const savedDoseNum = validDoses.length;
+            if (liveRateParams.value && liveRateParams.value.doseNumber === savedDoseNum) return;
+
+            let lastIntHours = 0;
+            if (validDoses.length > 1) {
+              const pM = parseTimeToMinutes(validDoses[validDoses.length - 2].time);
+              const lM = parseTimeToMinutes(last.time);
+              if (pM !== null && lM !== null) {
+                let d = lM - pM;
+                if (d <= 0) d += 1440;
+                lastIntHours = d / 60;
+              }
+            } else if (validDoses.length === 1 && data.wakeTime) {
+              const wM = parseTimeToMinutes(data.wakeTime);
+              const lM = parseTimeToMinutes(last.time);
+              if (wM !== null && lM !== null) {
+                let d = lM - wM;
+                if (d <= 0) d += 1440;
+                lastIntHours = d / 60;
+              }
+            }
+
+            const prevDoseNum = last.doseNumber - 1;
+            const prevDelta = prevDoseNum >= 1 ? (parseFloat(safeStorageGet(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${prevDoseNum}`)) || 0) : 0;
+            const initialDelta = parseFloat(safeStorageGet(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${last.doseNumber}`)) || 0;
+            const recRate = currentRecRate.value;
+            const lAmt = getParsedAmount(last.amount);
+            let calcRate = recRate;
+            if (lastIntHours > 0) {
+              const exactRec = prevDelta + recRate * lastIntHours;
+              if (lAmt > exactRec + 0.005) calcRate = (lAmt - prevDelta) / lastIntHours;
+            }
+
+            liveRateParams.value = {
+              doseNumber: savedDoseNum,
+              lastIntHours,
+              initialDelta,
+              recRate,
+              baseRate: recRate + 0.01,
+              startingHighRate: calcRate
+            };
+          };
+
+          const applyDoseRecommendation = (data) => {
+            if (!data || !data.found || isUserModified.value) return;
+            const validDoses = (data.allDoses || []).filter(d => d.hasData && getParsedAmount(d.amount) > 0 && d.time);
+            const cap = currentCap.value;
+
+            if (validDoses.length === 0) {
+              lastRawRecommendation.value = cap;
+              amount.value = cap.toFixed(2);
+              return;
+            }
+            if (validDoses.length + 1 > 8) return;
+
+            const curM = parseTimeToMinutes(time.value.trim());
+            const lastM = parseTimeToMinutes(validDoses[validDoses.length - 1].time);
+            if (curM === null || lastM === null) return;
+
+            let elapsedMin = curM - lastM;
+            if (elapsedMin < 0) elapsedMin = Math.abs(elapsedMin) <= 3 ? 0 : elapsedMin + 1440;
+
+            const savedDiff = safeStorageGet(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${validDoses.length}`);
+            const initialDelta = (savedDiff !== null && !isNaN(parseFloat(savedDiff))) ? parseFloat(savedDiff) : 0;
+
+            let netNeeded = initialDelta + currentRecRate.value * (elapsedMin / 60);
+            if (validDoses.length === 1 && elapsedMin <= 10) netNeeded = initialDelta;
+
+            lastRawRecommendation.value = netNeeded;
+            if (netNeeded > cap) netNeeded = cap;
+
+            let rounded = Math.round(netNeeded * 100) / 100;
+            if (Math.abs(rounded) < 0.005) rounded = 0;
+            amount.value = rounded.toFixed(2);
+          };
+
+          const hydrateStats = (data) => {
+            stats.value = data;
+            if (data.wakeTime) wakeTime.value = data.wakeTime;
+            const dt = String(data.dayType || '').toLowerCase();
+            activeDayType.value = (dt === 'munkanap' || dt === 'dolgozós' || dt === 'work') ? 'Munkanap' : 'Szabadnap';
+            syncLiveRateParams(data);
+
+            const activeEl = document.activeElement;
+            const isEditingTable = activeEl && activeEl.id && (activeEl.id.startsWith('t_time_') || activeEl.id.startsWith('t_amount_'));
+            if (!isEditingTable) {
+              tableDoses.value = (data.allDoses || []).map(item => ({
+                doseNumber: item.doseNumber,
+                time: item.time || '',
+                amount: item.amount ? String(item.amount).replace(',', '.') : '',
+                hasData: item.hasData
+              }));
+            }
+            applyDoseRecommendation(data);
+          };
+
+          const loadStats = () => {
+            const cacheKey = `taper_fast_cache_v24_${sheetName.value}_${doseDate.value}`;
+            let hasCache = false;
+            const cached = safeStorageGet(cacheKey, true);
+            if (cached && cached.found) {
+              hydrateStats(cached);
+              hasCache = true;
+            }
+
+            if (!hasCache) {
+              stats.value = null;
+              loading.value = true;
+            }
+
+            callApi({ action: 'getStats', sheetName: sheetName.value, dateStr: doseDate.value }, (data) => {
+              loading.value = false;
+              if (!data || !data.found) {
+                if (!hasCache) stats.value = { found: false };
+                return;
+              }
+              saveToLocalCache(sheetName.value, doseDate.value, data);
+              hydrateStats(data);
+            }, () => {
+              loading.value = false;
+            });
+          };
+
+          const onProfileChange = () => {
+            safeStorageSet('taper_active_profile', sheetName.value);
+            stats.value = null;
+            isUserModified.value = false;
+            isManualTimeSet.value = false;
+            lastRawRecommendation.value = null;
+            liveRateParams.value = null;
+            currentTypingRate.value = null;
+            amount.value = '';
+            loadStats();
+          };
+
+          const setDayType = (type) => {
+            activeDayType.value = type;
+            callApi({ action: 'saveDayType', sheetName: sheetName.value, dateStr: doseDate.value, dayType: type }, (res) => {
+              if (res && res.success) {
+                saveToLocalCache(sheetName.value, doseDate.value, res.stats);
+                hydrateStats(res.stats);
+              }
+            });
+          };
+
+          const onWakeInput = (e) => {
+            wakeTime.value = formatTimeStr(e.target.value);
+            e.target.value = wakeTime.value;
+          };
+
+          const onWakeBlur = () => {
+            wakeTime.value = normalizeTimeStr(wakeTime.value);
+            if (wakeTime.value && wakeTime.value.indexOf(':') === -1) return;
+            callApi({ action: 'saveWakeTime', sheetName: sheetName.value, dateStr: doseDate.value, wakeTime: wakeTime.value }, (res) => {
+              if (res && res.success) {
+                saveToLocalCache(sheetName.value, doseDate.value, res.stats);
+                hydrateStats(res.stats);
+              }
+            });
+          };
+
+          const onManualTimeInput = (e) => {
+            isManualTimeSet.value = true;
+            time.value = formatTimeStr(e.target.value);
+            e.target.value = time.value;
+            if (!isUserModified.value && stats.value) applyDoseRecommendation(stats.value);
+          };
+
+          const onTimeBlur = () => {
+            time.value = normalizeTimeStr(time.value);
+            if (!isUserModified.value && stats.value) applyDoseRecommendation(stats.value);
+          };
+
+          const onAmountInput = (e) => {
+            isUserModified.value = true;
+            amount.value = formatAmountStr(e.target.value);
+            e.target.value = amount.value;
+          };
+
+          const handleDoseContainerClick = () => {
+            if (getParsedAmount(amount.value) > 0 && !isSaving.value) autoSubmit();
+          };
+
+          const handleAmountBlur = () => {
+            setTimeout(() => {
+              if (getParsedAmount(amount.value) > 0 && !isSaving.value && isUserModified.value) autoSubmit();
+            }, 150);
+          };
+
+          const autoSubmit = () => {
+            if (isSaving.value) return;
+            const rawVal = String(amount.value || '').replace(',', '.').trim();
+            if (rawVal.startsWith('-')) return;
+            const amountVal = getParsedAmount(rawVal);
+            if (amountVal <= 0) return;
+
+            const validCount = stats.value && stats.value.allDoses
+              ? stats.value.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length
+              : 0;
+            const currentDoseIndex = validCount + 1;
+
+            let initialDelta = 0;
+            if (currentDoseIndex === 1 && lastRawRecommendation.value !== null) {
+              if (amountVal < lastRawRecommendation.value) initialDelta = lastRawRecommendation.value - amountVal;
+            } else if (currentDoseIndex > 1 && lastRawRecommendation.value !== null) {
+              initialDelta = lastRawRecommendation.value - amountVal;
+            }
+
+            const recRate = currentRecRate.value;
+            let lastIntHours = 0;
+            const curM = parseTimeToMinutes(time.value.trim());
+            const last = stats.value && stats.value.lastDose;
+            if (last && curM !== null) {
+              const lastM = parseTimeToMinutes(last.time);
+              if (lastM !== null) {
+                let d = curM - lastM;
+                if (d <= 0) d += 1440;
+                lastIntHours = d / 60;
+              }
+            } else if (!last && stats.value && stats.value.wakeTime && curM !== null) {
+              const wM = parseTimeToMinutes(stats.value.wakeTime);
+              if (wM !== null) {
+                let d = curM - wM;
+                if (d <= 0) d += 1440;
+                lastIntHours = d / 60;
+              }
+            }
+
+            liveRateParams.value = {
+              doseNumber: currentDoseIndex,
+              lastIntHours,
+              initialDelta,
+              recRate,
+              baseRate: recRate + 0.01,
+              startingHighRate: currentTypingRate.value || recRate
+            };
+            safeStorageSet(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${currentDoseIndex}`, String(initialDelta));
+
+            isSaving.value = true;
+            isUserModified.value = false;
+            isManualTimeSet.value = false;
+            lastRawRecommendation.value = initialDelta;
+
+            let rVal = Math.round(initialDelta * 100) / 100;
+            if (Math.abs(rVal) < 0.005) rVal = 0;
+            amount.value = rVal.toFixed(2);
+
+            if (stats.value && stats.value.allDoses) {
+              const valid = stats.value.allDoses
+                .filter(d => d.hasData && getParsedAmount(d.amount) > 0 && d.time)
+                .map(d => ({ time: d.time, amount: getParsedAmount(d.amount) }));
+              valid.push({ time: time.value.trim(), amount: amountVal });
+              valid.sort((a, b) => a.time.localeCompare(b.time));
+
+              const updatedDoses = [];
+              for (let k = 1; k <= 8; k++) {
+                if (k <= valid.length) {
+                  updatedDoses.push({ doseNumber: k, time: valid[k - 1].time, amount: valid[k - 1].amount.toFixed(2), hasData: true });
+                } else {
+                  updatedDoses.push({ doseNumber: k, time: '', amount: '', hasData: false });
+                }
+              }
+              const curTot = parseFloat(String(stats.value.dailyTotal || '0').replace(' g', '').replace(',', '.').trim()) || 0;
+              stats.value = {
+                ...stats.value,
+                allDoses: updatedDoses,
+                dailyTotal: (curTot + amountVal).toFixed(2) + ' g',
+                lastDose: {
+                  doseNumber: valid.length,
+                  time: time.value.trim(),
+                  amount: amountVal.toFixed(2),
+                  doseDiff: initialDelta,
+                  awakeTime: '-',
+                  diff: '-',
+                  rate: valid.length > 1 ? recRate.toFixed(2) : '-'
+                }
+              };
+              tableDoses.value = updatedDoses.map(d => ({ ...d }));
+            }
+
+            callApi({
+              action: 'saveDose',
+              sheetName: sheetName.value,
+              dateStr: doseDate.value,
+              time: time.value.trim(),
+              amount: String(amountVal),
+              wakeTime: wakeTime.value.trim(),
+              dayType: activeDayType.value
+            }, (res) => {
+              isSaving.value = false;
+              if (res && res.success && res.stats) {
+                if (res.stats.lastDose) res.stats.lastDose.doseDiff = initialDelta;
+                saveToLocalCache(sheetName.value, doseDate.value, res.stats);
+                hydrateStats(res.stats);
+              }
+            }, () => {
+              isSaving.value = false;
+              loadStats();
+            });
+          };
+
+          const onTableTimeInput = (e, item) => {
+            const digits = buildSmartTimeDigits(e.target.value);
+            item.time = digits.length >= 3 ? `${digits.substring(0, 2)}:${digits.substring(2, 4)}` : digits;
+            e.target.value = item.time;
+            if (digits.length >= 4) {
+              const aEl = document.getElementById('t_amount_' + item.doseNumber);
+              if (aEl) setTimeout(() => { aEl.focus(); aEl.select(); }, 30);
+            }
+          };
+
+          const onTableTimeBlur = (item) => {
+            item.time = normalizeTimeStr(item.time);
+            triggerTableDoseSync(item);
+          };
+
+          const onTableAmountInput = (e, item) => {
+            item.amount = formatAmountStr(e.target.value);
+            e.target.value = item.amount;
+            triggerTableDoseSync(item);
+          };
+
+          const handleTableAmountKeydown = (e, item) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              e.target.blur();
+              return;
+            }
+            if (e.key === 'Backspace' || e.key === 'Delete') {
+              if (item.amount.trim() !== '') {
+                e.preventDefault();
+                item.amount = '';
+                executeEntryDeletion(item);
+              } else if (item.time.trim() !== '') {
+                e.preventDefault();
+                item.time = '';
+                executeEntryDeletion(item);
+                const tEl = document.getElementById('t_time_' + item.doseNumber);
+                if (tEl) tEl.focus();
+              }
+            }
+          };
+
+          const recomputeLocalTableSummary = () => {
+            if (!stats.value) return;
+            let sum = 0;
+            let lastD = null;
+            stats.value.allDoses = tableDoses.value.map(it => {
+              const num = getParsedAmount(it.amount);
+              const hasData = num > 0;
+              if (hasData) { sum += num; lastD = { ...it, hasData: true }; }
+              return { ...it, hasData };
+            });
+            stats.value.dailyTotal = sum.toFixed(2) + ' g';
+            stats.value.lastDose = lastD;
+            saveToLocalCache(sheetName.value, doseDate.value, stats.value);
+            if (!isUserModified.value) applyDoseRecommendation(stats.value);
+          };
+
+          const executeEntryDeletion = (item) => {
+            item.amount = '';
+            safeStorageRemove(`taper_diff_v6_${sheetName.value}_${doseDate.value}_${item.doseNumber}`);
+            liveRateParams.value = null;
+            recomputeLocalTableSummary();
+            callApi({
+              action: 'saveSingleDoseSilent',
+              sheetName: sheetName.value,
+              dateStr: doseDate.value,
+              doseNumber: item.doseNumber,
+              time: item.time.trim(),
+              amount: 0
+            }, (res) => {
+              if (res && res.success && res.stats) {
+                saveToLocalCache(sheetName.value, doseDate.value, res.stats);
+                hydrateStats(res.stats);
+              }
+            }, () => { loadStats(); });
+          };
+
+          const triggerTableDoseSync = (item) => {
+            item.time = normalizeTimeStr(item.time);
+            const cleanAmt = getParsedAmount(item.amount);
+            if (cleanAmt <= 0 && !item.amount.trim()) {
+              executeEntryDeletion(item);
+              return;
+            }
+            liveRateParams.value = null;
+            recomputeLocalTableSummary();
+            callApi({
+              action: 'saveSingleDoseSilent',
+              sheetName: sheetName.value,
+              dateStr: doseDate.value,
+              doseNumber: item.doseNumber,
+              time: item.time.trim(),
+              amount: cleanAmt
+            }, (res) => {
+              if (res && res.success && res.stats) {
+                saveToLocalCache(sheetName.value, doseDate.value, res.stats);
+                hydrateStats(res.stats);
+              }
+            }, () => { loadStats(); });
+          };
+
+          /* --- SETTINGS MODAL --- */
+          const openSettingsModal = () => {
+            settingsForm.days = getStepDays();
+            settingsForm.max = getDoseCap(doseDate.value).toFixed(2);
+            settingsForm.rate = getRecommendationRate(doseDate.value).toFixed(2);
+            showSettingsModal.value = true;
+          };
+
+          const saveSettingsModal = () => {
+            const days = Math.min(10, Math.max(1, Math.round(settingsForm.days || 2)));
+            safeStorageSet('taper_step_days_v1_' + sheetName.value, String(days));
+
+            const maxVal = getParsedAmount(settingsForm.max);
+            if (maxVal > 0) {
+              safeStorageSet('taper_custom_cap_anchor_v1_' + sheetName.value, {
+                dateStr: doseDate.value,
+                cap: parseFloat(maxVal.toFixed(2))
+              });
+            }
+
+            const rateVal = getParsedAmount(settingsForm.rate);
+            if (rateVal > 0) {
+              safeStorageSet('taper_custom_rate_anchor_v1_' + sheetName.value, {
+                dateStr: doseDate.value,
+                rate: parseFloat(rateVal.toFixed(2))
+              });
+            }
+
+            settingsVersion.value++;
+            liveRateParams.value = null;
+            showSettingsModal.value = false;
+            if (stats.value && !isUserModified.value) applyDoseRecommendation(stats.value);
+          };
+
+          /* --- STATISTICS MODAL --- */
+          const getLocalCachedHistory = () => {
+            const todayStr = getTodayDateStr();
+            const cutoffStr = getDateStrOffset(95);
+            const prefix = `taper_fast_cache_v24_${sheetName.value}_`;
+            const results = [];
+            try {
+              for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (!key || !key.startsWith(prefix)) continue;
+                const dStr = key.substring(prefix.length);
+                if (dStr > todayStr || dStr < cutoffStr) continue;
+                const parsed = safeStorageGet(key, true);
+                if (!parsed || !parsed.found || !parsed.dailyTotal) continue;
+                const tot = parseFloat(String(parsed.dailyTotal).replace(' g', '').replace(',', '.').trim());
+                const cnt = parsed.allDoses
+                  ? parsed.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length
+                  : (parseInt(parsed.totalDoses, 10) || 0);
+                if (dStr === todayStr && cnt < 6) continue;
+                if (dStr <= '2026-11-22' && tot < 13) continue;
+                if (!isNaN(tot) && tot > 0) {
+                  results.push({
+                    date: dStr,
+                    total: tot,
+                    rate: parseRateNumber(parsed.dailyRate || parsed.avgRate || (parsed.lastDose && parsed.lastDose.rate)),
+                    count: cnt
+                  });
+                }
+              }
+            } catch (err) {
+              reportAppError('ERR_HISTORY_CACHE', 'Failed to read cached history', {}, err);
+            }
+            return results.sort((a, b) => a.date.localeCompare(b.date));
+          };
+
+          const openStatsModal = () => {
+            showSettingsModal.value = false;
+            showStatsModal.value = true;
+            fullHistoryPoints.value = getLocalCachedHistory();
+            historyLoading.value = true;
+            const todayStr = getTodayDateStr();
+
+            callApi({ action: 'getHistory', sheetName: sheetName.value, days: 90 }, (res) => {
+              historyLoading.value = false;
+              if (res && res.success && Array.isArray(res.history)) {
+                const filtered = res.history
+                  .filter(item => {
+                    if (!item.date || item.date > todayStr) return false;
+                    const tot = parseFloat(item.total);
+                    if (isNaN(tot) || tot <= 0) return false;
+                    const cnt = parseInt(item.count, 10) || 0;
+                    if (item.date === todayStr && cnt < 6) return false;
+                    if (item.date <= '2026-11-22' && tot < 13) return false;
+                    return true;
+                  })
+                  .map(item => ({
+                    date: item.date,
+                    total: parseFloat(item.total),
+                    rate: parseRateNumber(item.rate),
+                    count: parseInt(item.count, 10) || 0
+                  }))
+                  .sort((a, b) => a.date.localeCompare(b.date));
+                if (filtered.length > 0) fullHistoryPoints.value = filtered;
+              }
+            }, () => { historyLoading.value = false; });
+          };
+
+          const filteredChartPoints = computed(() => {
+            const cutoffStr = getDateStrOffset(activeStatsRange.value);
+            const isRate = activeStatsMetric.value === 'rate';
+            return fullHistoryPoints.value.filter(p => p.date >= cutoffStr && (isRate ? (p.rate !== null && p.rate > 0) : p.total > 0));
+          });
+
+          const chartStats = computed(() => {
+            const pts = filteredChartPoints.value;
+            if (!pts.length) return { avg: '-', min: '-', max: '-' };
+            const isRate = activeStatsMetric.value === 'rate';
+            const unit = isRate ? 'g/h' : 'g';
+            const vals = pts.map(p => isRate ? p.rate : p.total);
+            const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+            return {
+              avg: `${avg.toFixed(2)} ${unit}`,
+              min: `${Math.min(...vals).toFixed(2)} ${unit}`,
+              max: `${Math.max(...vals).toFixed(2)} ${unit}`
+            };
+          });
+
+          const chartData = computed(() => {
+            const pts = filteredChartPoints.value;
+            if (!pts.length) return { points: [], dots: [] };
+            const isRate = activeStatsMetric.value === 'rate';
+            const vals = pts.map(p => isRate ? p.rate : p.total);
+            const minVal = Math.min(...vals);
+            const maxVal = Math.max(...vals);
+            const padL = 38, padR = 12, padT = 14, padB = 24, W = 360, H = 174;
+            const plotW = W - padL - padR;
+            const plotH = H - padT - padB;
+
+            let yMin = minVal, yMax = maxVal;
+            if (yMax === yMin) {
+              const s = isRate ? 0.1 : 1;
+              yMin = Math.max(0, yMin - s);
+              yMax += s;
+            } else {
+              const m = (yMax - yMin) * 0.12;
+              yMin = Math.max(0, yMin - m);
+              yMax += m;
+            }
+
+            const getX = i => pts.length === 1 ? padL + plotW / 2 : padL + (i / (pts.length - 1)) * plotW;
+            const getY = v => padT + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
+
+            const coords = pts.map((_, i) => ({ x: getX(i).toFixed(1), y: getY(vals[i]).toFixed(1) }));
+            const polyArr = coords.map(c => `${c.x},${c.y}`);
+            const baseY = (padT + plotH).toFixed(1);
+            const areaArr = [...polyArr, `${coords[coords.length - 1].x},${baseY}`, `${coords[0].x},${baseY}`];
+            const dec = isRate ? 2 : 1;
+
+            return {
+              points: pts,
+              polyPoints: polyArr.join(' '),
+              areaPoints: areaArr.join(' '),
+              dots: pts.length <= 31 ? coords : [],
+              yMaxLabel: yMax.toFixed(dec),
+              yMidLabel: ((yMin + yMax) / 2).toFixed(dec),
+              yMinLabel: yMin.toFixed(dec),
+              firstDate: pts[0].date.substring(5),
+              midDate: pts.length > 2 ? pts[Math.floor(pts.length / 2)].date.substring(5) : '',
+              lastDate: pts[pts.length - 1].date.substring(5)
+            };
+          });
+
+          const formatDiffObj = (diff, unit) => {
+            if (diff === null || isNaN(diff)) return { text: '-', color: '#666' };
+            const sign = diff > 0 ? '+' : '';
+            const color = diff > 0.005 ? '#ef5350' : (diff < -0.005 ? '#81c784' : '#aaa');
+            return { text: `${sign}${diff.toFixed(2)} ${unit}`, color };
+          };
+
+          const calcPeriod = (windowDays) => {
+            const pts = fullHistoryPoints.value;
+            const todayStr = getTodayDateStr();
+            const curEndOffset = pts.some(p => p.date === todayStr) ? 0 : 1;
+            const curStart = getDateStrOffset(curEndOffset + windowDays - 1);
+            const curEnd = getDateStrOffset(curEndOffset);
+            const prevStart = getDateStrOffset(curEndOffset + windowDays * 2 - 1);
+            const prevEnd = getDateStrOffset(curEndOffset + windowDays);
+
+            const curPts = pts.filter(p => p.date >= curStart && p.date <= curEnd);
+            const prevPts = pts.filter(p => p.date >= prevStart && p.date <= prevEnd);
+
+            let doseDiff = null;
+            if (curPts.length && prevPts.length) {
+              const curAvg = curPts.reduce((s, p) => s + p.total, 0) / curPts.length;
+              const prevAvg = prevPts.reduce((s, p) => s + p.total, 0) / prevPts.length;
+              doseDiff = curAvg - prevAvg;
+            }
+
+            const curR = curPts.filter(p => p.rate !== null);
+            const prevR = prevPts.filter(p => p.rate !== null);
+            let rateDiff = null;
+            if (curR.length && prevR.length) {
+              const curRAvg = curR.reduce((s, p) => s + p.rate, 0) / curR.length;
+              const prevRAvg = prevR.reduce((s, p) => s + p.rate, 0) / prevR.length;
+              rateDiff = curRAvg - prevRAvg;
+            }
+            return { dose: formatDiffObj(doseDiff, 'g'), rate: formatDiffObj(rateDiff, 'g/h') };
+          };
+
+          const comparisons = computed(() => ({
+            week: calcPeriod(7),
+            month: calcPeriod(30)
+          }));
+
+          const cleanDisplay = (str) => {
+            if (!str) return '-';
+            return String(str).replace(/,/g, '.').replace(/g\/óra|g\/ó|g\/h/g, '').trim();
+          };
+
+          onMounted(() => {
+            loadStats();
+            setInterval(() => {
+              if (!isManualTimeSet.value && document.activeElement?.id !== 'time') {
+                const nowTime = new Date().toTimeString().substring(0, 5);
+                if (time.value !== nowTime) {
+                  time.value = nowTime;
+                  if (!isUserModified.value && stats.value) applyDoseRecommendation(stats.value);
+                }
+              }
+            }, 1000);
+            setInterval(() => { nowTick.value = Date.now(); }, 5000);
+
+            if ('serviceWorker' in navigator) {
+              navigator.serviceWorker.register('./sw.js').catch(err => {
+                reportAppError('ERR_SW', 'Service worker registration failed', {}, err);
+              });
+            }
+          });
+
+          return {
+            activeError, copyFeedback, copyErrorReport, dismissError,
+            sheetName, doseDate, wakeTime, time, amount, activeDayType,
+            stats, tableDoses, loading,
+            currentCap, isAmountNegative, liveAwake, liveElapsed, preview,
+            showSettingsModal, settingsForm,
+            showStatsModal, activeStatsMetric, activeStatsRange, historyLoading,
+            chartStats, chartData, comparisons,
+            formatAmountStr, cleanDisplay,
+            loadStats, onProfileChange, setDayType,
+            onWakeInput, onWakeBlur, onManualTimeInput, onTimeBlur,
+            onAmountInput, handleDoseContainerClick, handleAmountBlur, autoSubmit,
+            onTableTimeInput, onTableTimeBlur, onTableAmountInput, handleTableAmountKeydown, triggerTableDoseSync,
+            openSettingsModal, saveSettingsModal, openStatsModal
+          };
+        }
+      });
+
+      app.config.errorHandler = (err, instance, info) => {
+        reportAppError('ERR_VUE', err?.message || String(err), { lifecycle: info }, err);
+      };
+
+      app.mount('#app');
+    </script>
+  </body>
+</html>
