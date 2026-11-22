@@ -226,10 +226,6 @@
         font-weight: 600;
         color: #fff;
       }
-      .highlight-value {
-        color: #64b5f6;
-        font-weight: 700;
-      }
       .loading {
         color: #666;
         font-style: italic;
@@ -452,7 +448,6 @@
     <div class="card">
       <div class="card-header">
         <span>Latest</span>
-        <span id="lastDoseTimeLabel" style="color: #64b5f6;"></span>
       </div>
       <div id="lastDoseStatsContent">
         <div class="loading">Loading...</div>
@@ -462,7 +457,6 @@
     <div class="card">
       <div class="card-header">
         <span>Values</span>
-        <span id="dateSubtitle" style="color: #555;"></span>
       </div>
       <div id="summaryStatsContent">
         <div class="loading">Loading...</div>
@@ -483,7 +477,7 @@
       <div class="modal-box">
         <div class="modal-header">
           <span class="modal-title">Settings</span>
-          <button type="button" class="modal-close" onclick="closeSettingsModal()">×</button>
+          <button type="button" class="modal-close" onclick="closeSettingsModal()">&times;</button>
         </div>
 
         <div class="modal-section">
@@ -1112,7 +1106,6 @@
         }
 
         var recommendationRate = getRecommendationRate(dateVal); 
-        var targetLimit = recommendationRate + 0.01;             
         var resultingRate = recommendationRate; 
 
         var curM = parseTimeToMinutes(document.getElementById('time').value.trim());
@@ -1134,10 +1127,9 @@
                     resultingRate = p.recRate;
                 }
             }
-            var bF = targetLimit.toFixed(2);
             var cF = resultingRate.toFixed(2);
             var col = (resultingRate > recommendationRate + 0.005) ? '#ef5350' : '#81c784';
-            rateDisplayEl.innerHTML = `<span style="color: ${col};">${cF}</span> <span style="color: #666;">/</span> <span style="color: #888;">${bF} g/h</span>`;
+            rateDisplayEl.innerHTML = `<span style="color: ${col};">${cF} g/h</span>`;
             return;
         }
 
@@ -1170,13 +1162,12 @@
 
         window.currentTypingRate = resultingRate; 
 
-        var baseFormatted = targetLimit.toFixed(2);
         var currentFormatted = resultingRate.toFixed(2);
 
         if (resultingRate <= recommendationRate && !isNeg) {
-          rateDisplayEl.innerHTML = `<span style="color: #81c784;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #81c784;">${baseFormatted} g/h</span>`;
+          rateDisplayEl.innerHTML = `<span style="color: #81c784;">${currentFormatted} g/h</span>`;
         } else {
-          rateDisplayEl.innerHTML = `<span style="color: #ef5350;">${currentFormatted}</span> <span style="color: #666;">/</span> <span style="color: #888;">${baseFormatted} g/h</span>`;
+          rateDisplayEl.innerHTML = `<span style="color: #ef5350;">${currentFormatted} g/h</span>`;
         }
       }
 
@@ -1610,8 +1601,6 @@
       function loadStats() {
         var sheetName = document.getElementById('sheetName').value;
         var dateStr = document.getElementById('doseDate').value;
-        var dateSubtitle = document.getElementById('dateSubtitle');
-        if (dateSubtitle) dateSubtitle.innerText = dateStr;
 
         var cacheKey = 'taper_fast_cache_v24_' + sheetName + '_' + dateStr;
         var hasCachedData = false;
@@ -1673,7 +1662,6 @@
         currentStatsData = data;
         var last = data.lastDose;
         var lastCard = document.getElementById('lastDoseStatsContent');
-        var timeLabel = document.getElementById('lastDoseTimeLabel');
         var dateVal = document.getElementById('doseDate').value;
         var sheetKey = document.getElementById('sheetName').value;
 
@@ -1682,11 +1670,9 @@
         var targetLimit = recommendationRate + 0.01;
 
         if (!last) {
-          if (timeLabel) timeLabel.innerText = '';
           if (lastCard) lastCard.innerHTML = '<div style="color: #666; font-size: 12px; text-align: center; padding: 8px;">No doses logged today.</div>';
           lastRecordedTimeStr = null;
         } else {
-          if (timeLabel) timeLabel.innerText = '#' + last.doseNumber + ' (' + last.time.substring(0, 5) + ' - ' + cleanDisplay(last.amount) + 'g)';
           lastRecordedTimeStr = last.time;
           
           var validDoses = data.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0);
@@ -1751,7 +1737,7 @@
 
           if (lastCard) {
             lastCard.innerHTML = `
-              <div class="stat-row"><span class="stat-label">Elapsed</span><span id="liveElapsedDisplay" class="stat-value highlight-value">Calculating...</span></div>
+              <div class="stat-row"><span class="stat-label">Elapsed</span><span id="liveElapsedDisplay" class="stat-value">Calculating...</span></div>
               <div class="stat-row"><span class="stat-label">Awake</span><span class="stat-value">${cleanDisplay(last.awakeTime)}</span></div>
             `;
             updateLiveElapsedTime();
@@ -1761,11 +1747,9 @@
         var summaryCard = document.getElementById('summaryStatsContent');
         if (summaryCard) {
           summaryCard.innerHTML = `
-            <div class="stat-row"><span class="stat-label">Rate</span><span class="stat-value">${recommendationRate.toFixed(2)} g/h</span></div>
             <div class="stat-row"><span class="stat-label">Max</span><span class="stat-value">${currentCap.toFixed(2)} g</span></div>
             <div class="stat-row"><span class="stat-label">Total</span><span class="stat-value">${cleanDisplay(data.dailyTotal)}</span></div>
             <div class="stat-row"><span class="stat-label">Average</span><span class="stat-value">${cleanDisplay(data.avgDose)}</span></div>
-            <div class="stat-row"><span class="stat-label">Count</span><span class="stat-value">${data.totalDoses}</span></div>
             <div class="stat-row"><span class="stat-label">Interval</span><span class="stat-value">${cleanDisplay(data.avgInterval)}</span></div>
           `;
         }
@@ -1894,7 +1878,7 @@
             var amountEl = document.getElementById('amount');
             if (rateEl && amountEl && amountEl.value.trim().startsWith('-')) {
                 var color = (displayRate > p.recRate + 0.005) ? '#ef5350' : '#81c784';
-                rateEl.innerHTML = `<span style="color: ${color};">${displayRate.toFixed(2)}</span> <span style="color: #666;">/</span> <span style="color: #888;">${p.baseRate.toFixed(2)} g/h</span>`;
+                rateEl.innerHTML = `<span style="color: ${color};">${displayRate.toFixed(2)} g/h</span>`;
             }
         }
       }
