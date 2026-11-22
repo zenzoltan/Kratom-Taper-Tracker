@@ -729,7 +729,7 @@
 
           <div class="stats-compare-box">
             <div class="compare-row">
-              <span class="compare-label">Daily</span>
+              <span class="compare-label">Daily{{ comparisons.daily.doseIndex ? ' (#' + comparisons.daily.doseIndex + ')' : '' }}</span>
               <span class="compare-vals">
                 <span :style="{ color: comparisons.daily.dose.color }">{{ comparisons.daily.dose.text }}</span>
                 <span :style="{ color: comparisons.daily.rate.color }">{{ comparisons.daily.rate.text }}</span>
@@ -1000,6 +1000,8 @@
           const activeStatsRange = ref(7);
           const fullHistoryPoints = ref([]);
           const historyLoading = ref(false);
+          const todayDayStats = ref(null);
+          const yesterdayDayStats = ref(null);
 
           const copyErrorReport = async () => {
             if (!activeError.value) return;
@@ -1657,7 +1659,30 @@
             showStatsModal.value = true;
             fullHistoryPoints.value = getLocalCachedHistory();
             historyLoading.value = true;
+
             const todayStr = getTodayDateStr();
+            const yestStr = getDateStrOffset(1);
+
+            todayDayStats.value = (doseDate.value === todayStr && stats.value && stats.value.found)
+              ? stats.value
+              : safeStorageGet(`taper_fast_cache_v24_${sheetName.value}_${todayStr}`, true);
+            yesterdayDayStats.value = safeStorageGet(`taper_fast_cache_v24_${sheetName.value}_${yestStr}`, true);
+
+            if (doseDate.value !== todayStr || !todayDayStats.value) {
+              callApi({ action: 'getStats', sheetName: sheetName.value, dateStr: todayStr }, (data) => {
+                if (data && data.found) {
+                  todayDayStats.value = data;
+                  saveToLocalCache(sheetName.value, todayStr, data);
+                }
+              });
+            }
+
+            callApi({ action: 'getStats', sheetName: sheetName.value, dateStr: yestStr }, (data) => {
+              if (data && data.found) {
+                yesterdayDayStats.value = data;
+                saveToLocalCache(sheetName.value, yestStr, data);
+              }
+            });
 
             callApi({ action: 'getHistory', sheetName: sheetName.value, days: 90 }, (res) => {
               historyLoading.value = false;
@@ -1756,13 +1781,51 @@
             return { text: `${sign}${diff.toFixed(2)} ${unit}`, color };
           };
 
+          const getDoseSnapshot = (dayStats, n) => {
+            if (!dayStats || !Array.isArray(dayStats.allDoses)) return null;
+            const valid = dayStats.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0);
+            if (valid.length < n || n < 1) return null;
+            let total = 0;
+            for (let i = 0; i < n; i++) total += getParsedAmount(valid[i].amount);
+            let rate = parseRateNumber(valid[n - 1].rate);
+            if (rate === null && n >= 2) {
+              const firstM = parseTimeToMinutes(valid[0].time);
+              const nthM = parseTimeToMinutes(valid[n - 1].time);
+              if (firstM !== null && nthM !== null) {
+                let diffM = nthM - firstM;
+                if (diffM <= 0) diffM += 1440;
+                if (diffM > 0) {
+                  let afterFirst = 0;
+                  for (let i = 1; i < n; i++) afterFirst += getParsedAmount(valid[i].amount);
+                  rate = afterFirst / (diffM / 60);
+                }
+              }
+            }
+            return { total, rate };
+          };
+
           const calcDaily = () => {
-            const pts = fullHistoryPoints.value;
-            const todayPt = pts.find(p => p.date === getTodayDateStr());
-            const yestPt = pts.find(p => p.date === getDateStrOffset(1));
-            const doseDiff = (todayPt && yestPt) ? (todayPt.total - yestPt.total) : null;
-            const rateDiff = (todayPt && yestPt && todayPt.rate !== null && yestPt.rate !== null) ? (todayPt.rate - yestPt.rate) : null;
-            return { dose: formatDiffObj(doseDiff, 'g'), rate: formatDiffObj(rateDiff, 'g/h') };
+            const tStats = (doseDate.value === getTodayDateStr() && stats.value && stats.value.found)
+              ? stats.value
+              : todayDayStats.value;
+            if (!tStats || !Array.isArray(tStats.allDoses)) {
+              return { doseIndex: 0, dose: formatDiffObj(null, 'g'), rate: formatDiffObj(null, 'g/h') };
+            }
+            const n = tStats.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length;
+            if (n === 0) {
+              return { doseIndex: 0, dose: formatDiffObj(null, 'g'), rate: formatDiffObj(null, 'g/h') };
+            }
+            const todaySnap = getDoseSnapshot(tStats, n);
+            const yestSnap = getDoseSnapshot(yesterdayDayStats.value, n);
+            const doseDiff = (todaySnap && yestSnap) ? (todaySnap.total - yestSnap.total) : null;
+            const rateDiff = (todaySnap && yestSnap && todaySnap.rate !== null && yestSnap.rate !== null)
+              ? (todaySnap.rate - yestSnap.rate)
+              : null;
+            return {
+              doseIndex: n,
+              dose: formatDiffObj(doseDiff, 'g'),
+              rate: formatDiffObj(rateDiff, 'g/h')
+            };
           };
 
           const calcPeriod = (windowDays) => {
