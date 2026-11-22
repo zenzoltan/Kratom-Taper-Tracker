@@ -420,6 +420,7 @@
         color: #fff;
       }
       .chart-container {
+        position: relative;
         width: 100%;
         height: 190px;
         background: #121212;
@@ -429,6 +430,25 @@
         align-items: center;
         justify-content: center;
         margin-bottom: 10px;
+        touch-action: none;
+      }
+      .chart-tooltip {
+        position: absolute;
+        top: 6px;
+        right: 10px;
+        background: #222;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 3px 8px;
+        border-radius: 6px;
+        pointer-events: none;
+        border: 1px solid #333;
+      }
+      .chart-tooltip span {
+        color: #888;
+        margin-right: 5px;
+        font-weight: 500;
       }
       .chart-empty {
         color: #666;
@@ -469,7 +489,7 @@
           <span class="error-code">[{{ activeError.code }}]</span>
           <div class="error-actions">
             <button type="button" class="error-btn" @click="copyErrorReport">{{ copyFeedback || 'Copy' }}</button>
-            <button type="button" class="error-btn" @click="dismissError">&times;</button>
+            <button type="button" class="error-btn" @click="dismissError">×</button>
           </div>
         </div>
         <div class="error-msg-text">{{ activeError.message }}</div>
@@ -621,7 +641,7 @@
         <div class="modal-box">
           <div class="modal-header">
             <span class="modal-title">Settings</span>
-            <button type="button" class="modal-close" @click="showSettingsModal = false">&times;</button>
+            <button type="button" class="modal-close" @click="showSettingsModal = false">×</button>
           </div>
 
           <div class="modal-section">
@@ -679,18 +699,18 @@
         <div class="modal-box modal-box-wide">
           <div class="modal-header">
             <span class="modal-title">Statistics</span>
-            <button type="button" class="modal-close" @click="showStatsModal = false">&times;</button>
+            <button type="button" class="modal-close" @click="showStatsModal = false">×</button>
           </div>
 
           <div class="range-tabs">
-            <button type="button" class="range-tab" :class="{ active: activeStatsMetric === 'total' }" @click="activeStatsMetric = 'total'">Total (g)</button>
-            <button type="button" class="range-tab" :class="{ active: activeStatsMetric === 'rate' }" @click="activeStatsMetric = 'rate'">Rate (g/h)</button>
+            <button type="button" class="range-tab" :class="{ active: activeStatsMetric === 'total' }" @click="setStatsMetric('total')">Total (g)</button>
+            <button type="button" class="range-tab" :class="{ active: activeStatsMetric === 'rate' }" @click="setStatsMetric('rate')">Rate (g/h)</button>
           </div>
 
           <div class="range-tabs" style="margin-bottom: 12px;">
-            <button type="button" class="range-tab" :class="{ active: activeStatsRange === 7 }" @click="activeStatsRange = 7">7 Days</button>
-            <button type="button" class="range-tab" :class="{ active: activeStatsRange === 30 }" @click="activeStatsRange = 30">1 Month</button>
-            <button type="button" class="range-tab" :class="{ active: activeStatsRange === 90 }" @click="activeStatsRange = 90">3 Months</button>
+            <button type="button" class="range-tab" :class="{ active: activeStatsRange === 7 }" @click="setStatsRange(7)">7 Days</button>
+            <button type="button" class="range-tab" :class="{ active: activeStatsRange === 30 }" @click="setStatsRange(30)">1 Month</button>
+            <button type="button" class="range-tab" :class="{ active: activeStatsRange === 90 }" @click="setStatsRange(90)">3 Months</button>
           </div>
 
           <div class="stats-summary-bar">
@@ -700,9 +720,21 @@
           </div>
 
           <div class="chart-container">
+            <div v-if="selectedChartPoint" class="chart-tooltip">
+              <span>{{ selectedChartPoint.date }}</span>{{ selectedChartPoint.label }}
+            </div>
             <div v-if="historyLoading && chartData.points.length === 0" class="chart-empty">Loading...</div>
             <div v-else-if="chartData.points.length === 0" class="chart-empty">No data in this period.</div>
-            <svg v-else viewBox="0 0 360 174" width="100%" height="100%" preserveAspectRatio="none">
+            <svg
+              v-else
+              viewBox="0 0 360 174"
+              width="100%"
+              height="100%"
+              preserveAspectRatio="none"
+              @pointerdown="onChartPointer"
+              @pointermove="onChartPointer"
+              @mouseleave="selectedChartIdx = null"
+            >
               <defs>
                 <linearGradient id="lineAreaGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stop-color="#64b5f6" stop-opacity="0.28"/>
@@ -724,6 +756,26 @@
               <polygon v-if="chartData.points.length > 1" :points="chartData.areaPoints" fill="url(#lineAreaGrad)" />
               <polyline v-if="chartData.points.length > 1" :points="chartData.polyPoints" fill="none" stroke="#64b5f6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
               <circle v-for="(pt, idx) in chartData.dots" :key="idx" :cx="pt.x" :cy="pt.y" r="2.8" fill="#64b5f6" />
+
+              <line
+                v-if="selectedChartPoint"
+                :x1="selectedChartPoint.x"
+                y1="14"
+                :x2="selectedChartPoint.x"
+                y2="150"
+                stroke="#444"
+                stroke-width="1"
+                stroke-dasharray="2,2"
+              />
+              <circle
+                v-if="selectedChartPoint"
+                :cx="selectedChartPoint.x"
+                :cy="selectedChartPoint.y"
+                r="4.5"
+                fill="#64b5f6"
+                stroke="#fff"
+                stroke-width="1.5"
+              />
             </svg>
           </div>
 
@@ -1043,6 +1095,17 @@
           const todayDayStats = ref(null);
           const prevDayStats = ref(null);
           const dailyCompareLoading = ref(false);
+          const selectedChartIdx = ref(null);
+
+          const setStatsMetric = (m) => {
+            activeStatsMetric.value = m;
+            selectedChartIdx.value = null;
+          };
+
+          const setStatsRange = (r) => {
+            activeStatsRange.value = r;
+            selectedChartIdx.value = null;
+          };
 
           const copyErrorReport = async () => {
             if (!activeError.value) return;
@@ -1205,7 +1268,6 @@
             safeStorageSet(`taper_fast_cache_v24_${sName}_${dStr}`, data);
           };
 
-          // Unified allowance with +3h virtual overnight buffer
           const applyDoseRecommendation = (data) => {
             if (!data || !data.found || isUserModified.value) return;
             const validDoses = (data.allDoses || []).filter(d => d.hasData && getParsedAmount(d.amount) > 0 && d.time);
@@ -1585,6 +1647,27 @@
             return true;
           };
 
+          const getDoseSnapshot = (dayStats, n) => {
+            if (!dayStats || !Array.isArray(dayStats.allDoses)) return null;
+            const valid = dayStats.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0);
+            if (valid.length < n || n < 1) return null;
+            let total = 0;
+            for (let i = 0; i < n; i++) total += getParsedAmount(valid[i].amount);
+            const baseTime = (dayStats.wakeTime && parseTimeToMinutes(dayStats.wakeTime) !== null)
+              ? dayStats.wakeTime
+              : valid[0].time;
+            const effH = getEffectiveHours(baseTime, valid[n - 1].time);
+            const rate = (effH && effH > 0) ? (total / effH) : parseRateNumber(valid[n - 1].rate);
+            return { total, rate };
+          };
+
+          const getFullDaySnapshot = (dayStats) => {
+            if (!dayStats || !Array.isArray(dayStats.allDoses)) return null;
+            const valid = dayStats.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0);
+            if (valid.length === 0) return null;
+            return getDoseSnapshot(dayStats, valid.length);
+          };
+
           const getLocalCachedHistory = () => {
             const todayStr = getTodayDateStr();
             const cutoffStr = getDateStrOffset(95);
@@ -1605,10 +1688,11 @@
                 if (dStr === todayStr && cnt < 6) continue;
                 if (dStr <= '2026-11-22' && tot < 13) continue;
                 if (!isNaN(tot) && tot > 0) {
+                  const snap = getFullDaySnapshot(parsed);
                   results.push({
                     date: dStr,
                     total: tot,
-                    rate: parseRateNumber(parsed.dailyRate || parsed.avgRate || (parsed.lastDose && parsed.lastDose.rate)),
+                    rate: (snap && snap.rate) ? snap.rate : parseRateNumber(parsed.dailyRate || parsed.avgRate || (parsed.lastDose && parsed.lastDose.rate)),
                     count: cnt
                   });
                 }
@@ -1640,6 +1724,7 @@
           const openStatsModal = () => {
             showSettingsModal.value = false;
             showStatsModal.value = true;
+            selectedChartIdx.value = null;
             fullHistoryPoints.value = getLocalCachedHistory();
             historyLoading.value = true;
             dailyCompareLoading.value = true;
@@ -1703,10 +1788,26 @@
             }, () => { historyLoading.value = false; });
           };
 
+          // Sync today's chart rate with the +3h virtual buffer calculation
+          const normalizedHistoryPoints = computed(() => {
+            const todayStr = getTodayDateStr();
+            const tStats = (doseDate.value === todayStr && stats.value && stats.value.found)
+              ? stats.value
+              : todayDayStats.value;
+            const tSnap = (tStats && getValidDoseCount(tStats) >= 6) ? getFullDaySnapshot(tStats) : null;
+
+            return fullHistoryPoints.value.map(p => {
+              if (p.date === todayStr && tSnap && tSnap.rate !== null) {
+                return { ...p, total: tSnap.total, rate: tSnap.rate };
+              }
+              return p;
+            });
+          });
+
           const filteredChartPoints = computed(() => {
             const cutoffStr = getDateStrOffset(activeStatsRange.value);
             const isRate = activeStatsMetric.value === 'rate';
-            return fullHistoryPoints.value.filter(p => p.date >= cutoffStr && (isRate ? (p.rate !== null && p.rate > 0) : p.total > 0));
+            return normalizedHistoryPoints.value.filter(p => p.date >= cutoffStr && (isRate ? (p.rate !== null && p.rate > 0) : p.total > 0));
           });
 
           const chartStats = computed(() => {
@@ -1725,7 +1826,7 @@
 
           const chartData = computed(() => {
             const pts = filteredChartPoints.value;
-            if (!pts.length) return { points: [], dots: [] };
+            if (!pts.length) return { points: [], coords: [], dots: [] };
             const isRate = activeStatsMetric.value === 'rate';
             const vals = pts.map(p => isRate ? p.rate : p.total);
             const minVal = Math.min(...vals);
@@ -1748,7 +1849,13 @@
             const getX = i => pts.length === 1 ? padL + plotW / 2 : padL + (i / (pts.length - 1)) * plotW;
             const getY = v => padT + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
 
-            const coords = pts.map((_, i) => ({ x: getX(i).toFixed(1), y: getY(vals[i]).toFixed(1) }));
+            const coords = pts.map((p, i) => ({
+              x: getX(i).toFixed(1),
+              y: getY(vals[i]).toFixed(1),
+              numX: getX(i),
+              date: p.date.substring(5),
+              val: vals[i]
+            }));
             const polyArr = coords.map(c => `${c.x},${c.y}`);
             const baseY = (padT + plotH).toFixed(1);
             const areaArr = [...polyArr, `${coords[coords.length - 1].x},${baseY}`, `${coords[0].x},${baseY}`];
@@ -1756,6 +1863,7 @@
 
             return {
               points: pts,
+              coords,
               polyPoints: polyArr.join(' '),
               areaPoints: areaArr.join(' '),
               dots: pts.length <= 31 ? coords : [],
@@ -1768,32 +1876,44 @@
             };
           });
 
+          const selectedChartPoint = computed(() => {
+            const idx = selectedChartIdx.value;
+            const coords = chartData.value.coords || [];
+            if (idx === null || idx < 0 || idx >= coords.length) return null;
+            const pt = coords[idx];
+            const unit = activeStatsMetric.value === 'rate' ? 'g/h' : 'g';
+            return {
+              x: pt.x,
+              y: pt.y,
+              date: pt.date,
+              label: `${pt.val.toFixed(2)} ${unit}`
+            };
+          });
+
+          const onChartPointer = (e) => {
+            const coords = chartData.value.coords || [];
+            if (!coords.length) return;
+            const svg = e.currentTarget;
+            const rect = svg.getBoundingClientRect();
+            if (!rect.width) return;
+            const relX = ((e.clientX - rect.left) / rect.width) * 360;
+            let bestIdx = 0;
+            let bestDist = Infinity;
+            for (let i = 0; i < coords.length; i++) {
+              const d = Math.abs(coords[i].numX - relX);
+              if (d < bestDist) {
+                bestDist = d;
+                bestIdx = i;
+              }
+            }
+            selectedChartIdx.value = bestIdx;
+          };
+
           const formatDiffObj = (diff, unit) => {
             if (diff === null || isNaN(diff)) return { text: '-', color: '#666' };
             const sign = diff > 0 ? '+' : '';
             const color = diff > 0.005 ? '#ef5350' : (diff < -0.005 ? '#81c784' : '#aaa');
             return { text: `${sign}${diff.toFixed(2)} ${unit}`, color };
-          };
-
-          const getDoseSnapshot = (dayStats, n) => {
-            if (!dayStats || !Array.isArray(dayStats.allDoses)) return null;
-            const valid = dayStats.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0);
-            if (valid.length < n || n < 1) return null;
-            let total = 0;
-            for (let i = 0; i < n; i++) total += getParsedAmount(valid[i].amount);
-            const baseTime = (dayStats.wakeTime && parseTimeToMinutes(dayStats.wakeTime) !== null)
-              ? dayStats.wakeTime
-              : valid[0].time;
-            const effH = getEffectiveHours(baseTime, valid[n - 1].time);
-            const rate = (effH && effH > 0) ? (total / effH) : parseRateNumber(valid[n - 1].rate);
-            return { total, rate };
-          };
-
-          const getFullDaySnapshot = (dayStats) => {
-            if (!dayStats || !Array.isArray(dayStats.allDoses)) return null;
-            const valid = dayStats.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0);
-            if (valid.length === 0) return null;
-            return getDoseSnapshot(dayStats, valid.length);
           };
 
           const calcDaily = () => {
@@ -1836,7 +1956,7 @@
           };
 
           const calcPeriod = (windowDays) => {
-            const pts = fullHistoryPoints.value;
+            const pts = normalizedHistoryPoints.value;
             const todayStr = getTodayDateStr();
             const curEndOffset = pts.some(p => p.date === todayStr) ? 0 : 1;
             const curStart = getDateStrOffset(curEndOffset + windowDays - 1);
@@ -1903,6 +2023,7 @@
             currentCap, isAmountNegative, liveAwake, liveElapsed, preview,
             showSettingsModal, settingsForm,
             showStatsModal, activeStatsMetric, activeStatsRange, historyLoading, dailyCompareLoading,
+            selectedChartIdx, selectedChartPoint, onChartPointer, setStatsMetric, setStatsRange,
             chartStats, chartData, comparisons,
             formatAmountStr, cleanDisplay,
             loadStats, onProfileChange, setDayType,
