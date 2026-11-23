@@ -554,6 +554,10 @@
         <button type="button" class="day-type-btn" :class="{ active: activeDayType === 'Szabadnap' }" @click="setDayType('Szabadnap')">Off</button>
         <button type="button" class="day-type-btn" :class="{ active: activeDayType === 'Munkanap' }" @click="setDayType('Munkanap')">Work</button>
       </div>
+      <div v-if="sheetName === 'Zoli'" class="day-type-container">
+        <button type="button" class="day-type-btn" :class="{ active: activeDayType === 'Rest' }" @click="setDayType('Rest')">Rest</button>
+        <button type="button" class="day-type-btn" :class="{ active: activeDayType === 'Exercise' }" @click="setDayType('Exercise')">Exercise</button>
+      </div>
 
       <!-- Main Dose Input -->
       <form @submit.prevent="autoSubmit" class="dose-container" @click="handleDoseContainerClick">
@@ -899,7 +903,15 @@
         return (isNaN(h) || isNaN(m)) ? null : h * 60 + m;
       }
 
-      function getEffectiveHours(baseTimeStr, targetTimeStr) {
+      function getBufferHoursForDay(profileName, dayTypeStr) {
+        if (profileName === 'Zoli') {
+          const dt = String(dayTypeStr || '').toLowerCase();
+          if (dt === 'exercise' || dt === 'edzés') return 0;
+        }
+        return VIRTUAL_BUFFER_HOURS;
+      }
+
+      function getEffectiveHours(baseTimeStr, targetTimeStr, bufferHours = VIRTUAL_BUFFER_HOURS) {
         const baseM = parseTimeToMinutes(baseTimeStr);
         const targetM = parseTimeToMinutes(targetTimeStr);
         if (baseM === null || targetM === null) return null;
@@ -907,7 +919,7 @@
         if (diffMin < 0) {
           diffMin = Math.abs(diffMin) <= 3 ? 0 : diffMin + 1440;
         }
-        return (diffMin / 60) + VIRTUAL_BUFFER_HOURS;
+        return (diffMin / 60) + bufferHours;
       }
 
       function buildSmartTimeDigits(rawVal) {
@@ -1072,7 +1084,7 @@
           const wakeTime = ref('');
           const time = ref(new Date().toTimeString().substring(0, 5));
           const amount = ref('');
-          const activeDayType = ref('Szabadnap');
+          const activeDayType = ref(sheetName.value === 'Zoli' ? 'Rest' : 'Szabadnap');
 
           const stats = ref(null);
           const tableDoses = ref([]);
@@ -1184,6 +1196,7 @@
 
           const currentCap = computed(() => getDoseCap(doseDate.value));
           const currentRecRate = computed(() => getRecommendationRate(doseDate.value));
+          const currentBufferHours = computed(() => getBufferHoursForDay(sheetName.value, activeDayType.value));
           const isAmountNegative = computed(() => String(amount.value || '').trim().startsWith('-'));
 
           const getBaseWakeTime = (data) => {
@@ -1246,7 +1259,8 @@
             }
 
             const baseWake = getBaseWakeTime(stats.value);
-            const effH = baseWake ? getEffectiveHours(baseWake, time.value.trim()) : VIRTUAL_BUFFER_HOURS;
+            const bufH = currentBufferHours.value;
+            const effH = baseWake ? getEffectiveHours(baseWake, time.value.trim(), bufH) : bufH;
             const recRate = currentRecRate.value;
 
             if (!effH || effH <= 0) {
@@ -1281,7 +1295,7 @@
               return;
             }
 
-            const effH = getEffectiveHours(baseWake, time.value.trim());
+            const effH = getEffectiveHours(baseWake, time.value.trim(), currentBufferHours.value);
             if (effH === null) return;
 
             const consumedTotal = validDoses.reduce((s, d) => s + getParsedAmount(d.amount), 0);
@@ -1299,7 +1313,11 @@
             stats.value = data;
             if (data.wakeTime) wakeTime.value = data.wakeTime;
             const dt = String(data.dayType || '').toLowerCase();
-            activeDayType.value = (dt === 'munkanap' || dt === 'dolgozós' || dt === 'work') ? 'Munkanap' : 'Szabadnap';
+            if (sheetName.value === 'Zoli') {
+              activeDayType.value = (dt === 'exercise' || dt === 'edzés') ? 'Exercise' : 'Rest';
+            } else {
+              activeDayType.value = (dt === 'munkanap' || dt === 'dolgozós' || dt === 'work') ? 'Munkanap' : 'Szabadnap';
+            }
 
             const activeEl = document.activeElement;
             const isEditingTable = activeEl && activeEl.id && (activeEl.id.startsWith('t_time_') || activeEl.id.startsWith('t_amount_'));
@@ -1349,6 +1367,7 @@
 
           const onProfileChange = () => {
             safeStorageSet('taper_active_profile', sheetName.value);
+            activeDayType.value = sheetName.value === 'Zoli' ? 'Rest' : 'Szabadnap';
             stats.value = null;
             isUserModified.value = false;
             isManualTimeSet.value = false;
@@ -1358,6 +1377,11 @@
 
           const setDayType = (type) => {
             activeDayType.value = type;
+            if (stats.value) {
+              stats.value.dayType = type;
+              saveToLocalCache(sheetName.value, doseDate.value, stats.value);
+              if (!isUserModified.value) applyDoseRecommendation(stats.value);
+            }
             enqueueWrite({ action: 'saveDayType', sheetName: sheetName.value, dateStr: doseDate.value, dayType: type }, (res) => {
               if (res && res.success) {
                 saveToLocalCache(sheetName.value, doseDate.value, res.stats);
@@ -1442,7 +1466,8 @@
               }
               const newTot = valid.reduce((s, d) => s + d.amount, 0);
               const baseWake = getBaseWakeTime(stats.value);
-              const effH = baseWake ? getEffectiveHours(baseWake, time.value.trim()) : VIRTUAL_BUFFER_HOURS;
+              const bufH = currentBufferHours.value;
+              const effH = baseWake ? getEffectiveHours(baseWake, time.value.trim(), bufH) : bufH;
               stats.value = {
                 ...stats.value,
                 allDoses: updatedDoses,
@@ -1453,7 +1478,7 @@
                   amount: amountVal.toFixed(2),
                   awakeTime: '-',
                   diff: '-',
-                  rate: effH ? (newTot / effH).toFixed(2) : '-'
+                  rate: (effH && effH > 0) ? (newTot / effH).toFixed(2) : '-'
                 }
               };
               tableDoses.value = updatedDoses.map(d => ({ ...d }));
@@ -1656,7 +1681,8 @@
             const baseTime = (dayStats.wakeTime && parseTimeToMinutes(dayStats.wakeTime) !== null)
               ? dayStats.wakeTime
               : valid[0].time;
-            const effH = getEffectiveHours(baseTime, valid[n - 1].time);
+            const bufH = getBufferHoursForDay(sheetName.value, dayStats.dayType);
+            const effH = getEffectiveHours(baseTime, valid[n - 1].time, bufH);
             const rate = (effH && effH > 0) ? (total / effH) : parseRateNumber(valid[n - 1].rate);
             return { total, rate };
           };
@@ -1788,7 +1814,6 @@
             }, () => { historyLoading.value = false; });
           };
 
-          // Sync today's chart rate with the +3h virtual buffer calculation
           const normalizedHistoryPoints = computed(() => {
             const todayStr = getTodayDateStr();
             const tStats = (doseDate.value === todayStr && stats.value && stats.value.found)
