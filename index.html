@@ -489,7 +489,7 @@
           <span class="error-code">[{{ activeError.code }}]</span>
           <div class="error-actions">
             <button type="button" class="error-btn" @click="copyErrorReport">{{ copyFeedback || 'Copy' }}</button>
-            <button type="button" class="error-btn" @click="dismissError">×</button>
+            <button type="button" class="error-btn" @click="dismissError">&times;</button>
           </div>
         </div>
         <div class="error-msg-text">{{ activeError.message }}</div>
@@ -555,8 +555,8 @@
         <button type="button" class="day-type-btn" :class="{ active: activeDayType === 'Munkanap' }" @click="setDayType('Munkanap')">Work</button>
       </div>
       <div v-if="sheetName === 'Zoli'" class="day-type-container">
-        <button type="button" class="day-type-btn" :class="{ active: activeDayType === 'Rest' }" @click="setDayType('Rest')">Rest</button>
         <button type="button" class="day-type-btn" :class="{ active: activeDayType === 'Exercise' }" @click="setDayType('Exercise')">Exercise</button>
+        <button type="button" class="day-type-btn" :class="{ active: activeDayType === 'Rest' }" @click="setDayType('Rest')">Rest</button>
       </div>
 
       <!-- Main Dose Input -->
@@ -645,7 +645,7 @@
         <div class="modal-box">
           <div class="modal-header">
             <span class="modal-title">Settings</span>
-            <button type="button" class="modal-close" @click="showSettingsModal = false">×</button>
+            <button type="button" class="modal-close" @click="showSettingsModal = false">&times;</button>
           </div>
 
           <div class="modal-section">
@@ -703,7 +703,7 @@
         <div class="modal-box modal-box-wide">
           <div class="modal-header">
             <span class="modal-title">Statistics</span>
-            <button type="button" class="modal-close" @click="showStatsModal = false">×</button>
+            <button type="button" class="modal-close" @click="showStatsModal = false">&times;</button>
           </div>
 
           <div class="range-tabs">
@@ -889,6 +889,24 @@
         const d = new Date();
         d.setDate(d.getDate() - daysAgo);
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      }
+
+      function getDefaultZoliDayType(dateStr) {
+        const parts = String(dateStr || '').split('-');
+        if (parts.length === 3) {
+          const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+          if (d.getDay() === 0) return 'Rest';
+        }
+        return 'Exercise';
+      }
+
+      function resolveZoliDayType(dateStr, serverDayType) {
+        const localOverride = safeStorageGet(`taper_zoli_daytype_v1_${dateStr}`);
+        if (localOverride === 'Exercise' || localOverride === 'Rest') return localOverride;
+        const dt = String(serverDayType || '').toLowerCase();
+        if (dt === 'exercise' || dt === 'edzés') return 'Exercise';
+        if (dt === 'rest' || dt === 'pihenő') return 'Rest';
+        return getDefaultZoliDayType(dateStr);
       }
 
       function getParsedAmount(rawVal) {
@@ -1084,7 +1102,7 @@
           const wakeTime = ref('');
           const time = ref(new Date().toTimeString().substring(0, 5));
           const amount = ref('');
-          const activeDayType = ref(sheetName.value === 'Zoli' ? 'Rest' : 'Szabadnap');
+          const activeDayType = ref(sheetName.value === 'Zoli' ? resolveZoliDayType(doseDate.value, null) : 'Szabadnap');
 
           const stats = ref(null);
           const tableDoses = ref([]);
@@ -1312,10 +1330,10 @@
           const hydrateStats = (data) => {
             stats.value = data;
             if (data.wakeTime) wakeTime.value = data.wakeTime;
-            const dt = String(data.dayType || '').toLowerCase();
             if (sheetName.value === 'Zoli') {
-              activeDayType.value = (dt === 'exercise' || dt === 'edzés') ? 'Exercise' : 'Rest';
+              activeDayType.value = resolveZoliDayType(doseDate.value, data.dayType);
             } else {
+              const dt = String(data.dayType || '').toLowerCase();
               activeDayType.value = (dt === 'munkanap' || dt === 'dolgozós' || dt === 'work') ? 'Munkanap' : 'Szabadnap';
             }
 
@@ -1339,6 +1357,9 @@
           };
 
           const loadStats = () => {
+            if (sheetName.value === 'Zoli') {
+              activeDayType.value = resolveZoliDayType(doseDate.value, null);
+            }
             const cacheKey = `taper_fast_cache_v24_${sheetName.value}_${doseDate.value}`;
             let hasCache = false;
             const cached = safeStorageGet(cacheKey, true);
@@ -1367,7 +1388,7 @@
 
           const onProfileChange = () => {
             safeStorageSet('taper_active_profile', sheetName.value);
-            activeDayType.value = sheetName.value === 'Zoli' ? 'Rest' : 'Szabadnap';
+            activeDayType.value = sheetName.value === 'Zoli' ? resolveZoliDayType(doseDate.value, null) : 'Szabadnap';
             stats.value = null;
             isUserModified.value = false;
             isManualTimeSet.value = false;
@@ -1377,13 +1398,17 @@
 
           const setDayType = (type) => {
             activeDayType.value = type;
+            if (sheetName.value === 'Zoli') {
+              safeStorageSet(`taper_zoli_daytype_v1_${doseDate.value}`, type);
+            }
             if (stats.value) {
               stats.value.dayType = type;
               saveToLocalCache(sheetName.value, doseDate.value, stats.value);
               if (!isUserModified.value) applyDoseRecommendation(stats.value);
             }
             enqueueWrite({ action: 'saveDayType', sheetName: sheetName.value, dateStr: doseDate.value, dayType: type }, (res) => {
-              if (res && res.success) {
+              if (res && res.success && res.stats) {
+                if (sheetName.value === 'Zoli') res.stats.dayType = type;
                 saveToLocalCache(sheetName.value, doseDate.value, res.stats);
                 hydrateStats(res.stats);
               }
@@ -1672,7 +1697,7 @@
             return true;
           };
 
-          const getDoseSnapshot = (dayStats, n) => {
+          const getDoseSnapshot = (dayStats, n, dateStr = '') => {
             if (!dayStats || !Array.isArray(dayStats.allDoses)) return null;
             const valid = dayStats.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0);
             if (valid.length < n || n < 1) return null;
@@ -1681,17 +1706,20 @@
             const baseTime = (dayStats.wakeTime && parseTimeToMinutes(dayStats.wakeTime) !== null)
               ? dayStats.wakeTime
               : valid[0].time;
-            const bufH = getBufferHoursForDay(sheetName.value, dayStats.dayType);
+            const effectiveDayType = sheetName.value === 'Zoli'
+              ? resolveZoliDayType(dateStr || dayStats.dateStr || '', dayStats.dayType)
+              : dayStats.dayType;
+            const bufH = getBufferHoursForDay(sheetName.value, effectiveDayType);
             const effH = getEffectiveHours(baseTime, valid[n - 1].time, bufH);
             const rate = (effH && effH > 0) ? (total / effH) : parseRateNumber(valid[n - 1].rate);
             return { total, rate };
           };
 
-          const getFullDaySnapshot = (dayStats) => {
+          const getFullDaySnapshot = (dayStats, dateStr = '') => {
             if (!dayStats || !Array.isArray(dayStats.allDoses)) return null;
             const valid = dayStats.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0);
             if (valid.length === 0) return null;
-            return getDoseSnapshot(dayStats, valid.length);
+            return getDoseSnapshot(dayStats, valid.length, dateStr);
           };
 
           const getLocalCachedHistory = () => {
@@ -1714,7 +1742,7 @@
                 if (dStr === todayStr && cnt < 6) continue;
                 if (dStr <= '2026-11-22' && tot < 13) continue;
                 if (!isNaN(tot) && tot > 0) {
-                  const snap = getFullDaySnapshot(parsed);
+                  const snap = getFullDaySnapshot(parsed, dStr);
                   results.push({
                     date: dStr,
                     total: tot,
@@ -1732,13 +1760,13 @@
           const fetchPrevDayForComparison = (targetDateStr, onDone) => {
             const cached = safeStorageGet(`taper_fast_cache_v24_${sheetName.value}_${targetDateStr}`, true);
             if (isValidCompletedPrevDay(cached, targetDateStr)) {
-              prevDayStats.value = cached;
+              prevDayStats.value = { ...cached, dateStr: targetDateStr };
             }
             callApi({ action: 'getStats', sheetName: sheetName.value, dateStr: targetDateStr }, (data) => {
               if (data && data.found) {
                 saveToLocalCache(sheetName.value, targetDateStr, data);
                 if (isValidCompletedPrevDay(data, targetDateStr)) {
-                  prevDayStats.value = data;
+                  prevDayStats.value = { ...data, dateStr: targetDateStr };
                 }
               }
               if (onDone) onDone(data);
@@ -1819,7 +1847,7 @@
             const tStats = (doseDate.value === todayStr && stats.value && stats.value.found)
               ? stats.value
               : todayDayStats.value;
-            const tSnap = (tStats && getValidDoseCount(tStats) >= 6) ? getFullDaySnapshot(tStats) : null;
+            const tSnap = (tStats && getValidDoseCount(tStats) >= 6) ? getFullDaySnapshot(tStats, todayStr) : null;
 
             return fullHistoryPoints.value.map(p => {
               if (p.date === todayStr && tSnap && tSnap.rate !== null) {
@@ -1942,7 +1970,8 @@
           };
 
           const calcDaily = () => {
-            const tStats = (doseDate.value === getTodayDateStr() && stats.value && stats.value.found)
+            const todayStr = getTodayDateStr();
+            const tStats = (doseDate.value === todayStr && stats.value && stats.value.found)
               ? stats.value
               : todayDayStats.value;
             if (!tStats || !Array.isArray(tStats.allDoses)) {
@@ -1954,8 +1983,8 @@
             }
 
             if (n >= 6) {
-              const todayFull = getFullDaySnapshot(tStats);
-              const prevFull = getFullDaySnapshot(prevDayStats.value);
+              const todayFull = getFullDaySnapshot(tStats, todayStr);
+              const prevFull = getFullDaySnapshot(prevDayStats.value, prevDayStats.value?.dateStr || '');
               const doseDiff = (todayFull && prevFull) ? (todayFull.total - prevFull.total) : null;
               const rateDiff = (todayFull && prevFull && todayFull.rate !== null && prevFull.rate !== null)
                 ? (todayFull.rate - prevFull.rate)
@@ -1967,8 +1996,8 @@
               };
             }
 
-            const todaySnap = getDoseSnapshot(tStats, n);
-            const prevSnap = getDoseSnapshot(prevDayStats.value, n);
+            const todaySnap = getDoseSnapshot(tStats, n, todayStr);
+            const prevSnap = getDoseSnapshot(prevDayStats.value, n, prevDayStats.value?.dateStr || '');
             const doseDiff = (todaySnap && prevSnap) ? (todaySnap.total - prevSnap.total) : null;
             const rateDiff = (todaySnap && prevSnap && todaySnap.rate !== null && prevSnap.rate !== null)
               ? (todaySnap.rate - prevSnap.rate)
