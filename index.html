@@ -489,7 +489,7 @@
           <span class="error-code">[{{ activeError.code }}]</span>
           <div class="error-actions">
             <button type="button" class="error-btn" @click="copyErrorReport">{{ copyFeedback || 'Copy' }}</button>
-            <button type="button" class="error-btn" @click="dismissError">&times;</button>
+            <button type="button" class="error-btn" @click="dismissError">×</button>
           </div>
         </div>
         <div class="error-msg-text">{{ activeError.message }}</div>
@@ -644,8 +644,8 @@
       <div v-if="showSettingsModal" class="modal-overlay" @click.self="showSettingsModal = false">
         <div class="modal-box">
           <div class="modal-header">
-            <span class="modal-title">Settings</span>
-            <button type="button" class="modal-close" @click="showSettingsModal = false">&times;</button>
+            <span class="modal-title">Settings · {{ sheetName }} ({{ activeDayTypeLabel }})</span>
+            <button type="button" class="modal-close" @click="showSettingsModal = false">×</button>
           </div>
 
           <div class="modal-section">
@@ -703,7 +703,7 @@
         <div class="modal-box modal-box-wide">
           <div class="modal-header">
             <span class="modal-title">Statistics</span>
-            <button type="button" class="modal-close" @click="showStatsModal = false">&times;</button>
+            <button type="button" class="modal-close" @click="showStatsModal = false">×</button>
           </div>
 
           <div class="range-tabs">
@@ -818,6 +818,7 @@
       const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwLunA0503U9F0PElqt4IXJ7e2OFIFURAZVApI8IUuVafVlDA65Ijk6zxcRORWC8X0/exec";
       const API_TIMEOUT_MS = 12000;
       const VIRTUAL_BUFFER_HOURS = 3;
+      const CLOUD_SETTINGS_CACHE_KEY = 'taper_cloud_settings_v1';
 
       window.__DAILY_LOG_ERRORS__ = [];
       let globalErrorReporter = null;
@@ -1113,6 +1114,7 @@
           const isManualTimeSet = ref(false);
           const nowTick = ref(Date.now());
           const settingsVersion = ref(0);
+          const cloudSettings = ref(safeStorageGet(CLOUD_SETTINGS_CACHE_KEY, true) || {});
 
           const showSettingsModal = ref(false);
           const settingsForm = reactive({ days: 2, max: '3.67', rate: '1.19' });
@@ -1126,6 +1128,33 @@
           const prevDayStats = ref(null);
           const dailyCompareLoading = ref(false);
           const selectedChartIdx = ref(null);
+
+          const activeDayTypeLabel = computed(() => {
+            if (activeDayType.value === 'Szabadnap') return 'Off';
+            if (activeDayType.value === 'Munkanap') return 'Work';
+            return activeDayType.value;
+          });
+
+          const getSettingsKey = (profile = sheetName.value, dayType = activeDayType.value) => {
+            return `${profile}_${dayType}`;
+          };
+
+          const getModeSettings = (profile = sheetName.value, dayType = activeDayType.value) => {
+            settingsVersion.value;
+            const key = getSettingsKey(profile, dayType);
+            return (cloudSettings.value && cloudSettings.value[key]) ? cloudSettings.value[key] : null;
+          };
+
+          const loadCloudSettings = () => {
+            callApi({ action: 'getSettings' }, (res) => {
+              if (res && res.success && res.settings && typeof res.settings === 'object') {
+                cloudSettings.value = res.settings;
+                safeStorageSet(CLOUD_SETTINGS_CACHE_KEY, res.settings);
+                settingsVersion.value++;
+                if (stats.value && !isUserModified.value) applyDoseRecommendation(stats.value);
+              }
+            });
+          };
 
           const setStatsMetric = (m) => {
             activeStatsMetric.value = m;
@@ -1160,23 +1189,25 @@
             }
           };
 
-          const getStepDays = () => {
-            settingsVersion.value;
-            const days = parseInt(safeStorageGet('taper_step_days_v1_' + sheetName.value), 10);
-            return (isNaN(days) || days < 1 || days > 10) ? 2 : days;
+          const getStepDays = (profile = sheetName.value, dayType = activeDayType.value) => {
+            const mode = getModeSettings(profile, dayType);
+            if (mode && mode.days >= 1 && mode.days <= 10) return mode.days;
+            const legacyDays = parseInt(safeStorageGet('taper_step_days_v1_' + profile), 10);
+            return (isNaN(legacyDays) || legacyDays < 1 || legacyDays > 10) ? 2 : legacyDays;
           };
 
-          const getDoseCap = (dateStr) => {
-            settingsVersion.value;
-            const stepDays = getStepDays();
+          const getDoseCap = (dateStr, profile = sheetName.value, dayType = activeDayType.value) => {
+            const stepDays = getStepDays(profile, dayType);
             let baseDate = new Date(2026, 10, 10);
             let baseCap = 3.67;
-            const parsed = safeStorageGet('taper_custom_cap_anchor_v1_' + sheetName.value, true);
-            if (parsed && parsed.dateStr && !isNaN(parseFloat(parsed.cap))) {
-              const bp = parsed.dateStr.split('-');
+
+            const mode = getModeSettings(profile, dayType);
+            const anchor = (mode && mode.capAnchor) ? mode.capAnchor : safeStorageGet('taper_custom_cap_anchor_v1_' + profile, true);
+            if (anchor && anchor.dateStr && !isNaN(parseFloat(anchor.cap))) {
+              const bp = anchor.dateStr.split('-');
               if (bp.length === 3) {
                 baseDate = new Date(parseInt(bp[0], 10), parseInt(bp[1], 10) - 1, parseInt(bp[2], 10));
-                baseCap = parseFloat(parsed.cap);
+                baseCap = parseFloat(anchor.cap);
               }
             }
             const parts = (dateStr || '').split('-');
@@ -1189,17 +1220,18 @@
             return baseCap;
           };
 
-          const getRecommendationRate = (dateStr) => {
-            settingsVersion.value;
-            const stepDays = getStepDays();
+          const getRecommendationRate = (dateStr, profile = sheetName.value, dayType = activeDayType.value) => {
+            const stepDays = getStepDays(profile, dayType);
             let baseDate = new Date(2026, 10, 18);
             let baseRate = 1.19;
-            const parsed = safeStorageGet('taper_custom_rate_anchor_v1_' + sheetName.value, true);
-            if (parsed && parsed.dateStr && !isNaN(parseFloat(parsed.rate))) {
-              const bp = parsed.dateStr.split('-');
+
+            const mode = getModeSettings(profile, dayType);
+            const anchor = (mode && mode.rateAnchor) ? mode.rateAnchor : safeStorageGet('taper_custom_rate_anchor_v1_' + profile, true);
+            if (anchor && anchor.dateStr && !isNaN(parseFloat(anchor.rate))) {
+              const bp = anchor.dateStr.split('-');
               if (bp.length === 3) {
                 baseDate = new Date(parseInt(bp[0], 10), parseInt(bp[1], 10) - 1, parseInt(bp[2], 10));
-                baseRate = parseFloat(parsed.rate);
+                baseRate = parseFloat(anchor.rate);
               }
             }
             const parts = (dateStr || '').split('-');
@@ -1212,8 +1244,8 @@
             return baseRate;
           };
 
-          const currentCap = computed(() => getDoseCap(doseDate.value));
-          const currentRecRate = computed(() => getRecommendationRate(doseDate.value));
+          const currentCap = computed(() => getDoseCap(doseDate.value, sheetName.value, activeDayType.value));
+          const currentRecRate = computed(() => getRecommendationRate(doseDate.value, sheetName.value, activeDayType.value));
           const currentBufferHours = computed(() => getBufferHoursForDay(sheetName.value, activeDayType.value));
           const isAmountNegative = computed(() => String(amount.value || '').trim().startsWith('-'));
 
@@ -1651,35 +1683,46 @@
 
           /* --- SETTINGS MODAL --- */
           const openSettingsModal = () => {
-            settingsForm.days = getStepDays();
-            settingsForm.max = getDoseCap(doseDate.value).toFixed(2);
-            settingsForm.rate = getRecommendationRate(doseDate.value).toFixed(2);
+            settingsForm.days = getStepDays(sheetName.value, activeDayType.value);
+            settingsForm.max = getDoseCap(doseDate.value, sheetName.value, activeDayType.value).toFixed(2);
+            settingsForm.rate = getRecommendationRate(doseDate.value, sheetName.value, activeDayType.value).toFixed(2);
             showSettingsModal.value = true;
           };
 
           const saveSettingsModal = () => {
+            const key = getSettingsKey(sheetName.value, activeDayType.value);
             const days = Math.min(10, Math.max(1, Math.round(settingsForm.days || 2)));
-            safeStorageSet('taper_step_days_v1_' + sheetName.value, String(days));
+            const existing = getModeSettings(sheetName.value, activeDayType.value) || {};
 
             const maxVal = getParsedAmount(settingsForm.max);
-            if (maxVal > 0) {
-              safeStorageSet('taper_custom_cap_anchor_v1_' + sheetName.value, {
-                dateStr: doseDate.value,
-                cap: parseFloat(maxVal.toFixed(2))
-              });
-            }
+            const capAnchor = maxVal > 0
+              ? { dateStr: doseDate.value, cap: parseFloat(maxVal.toFixed(2)) }
+              : existing.capAnchor;
 
             const rateVal = getParsedAmount(settingsForm.rate);
-            if (rateVal > 0) {
-              safeStorageSet('taper_custom_rate_anchor_v1_' + sheetName.value, {
-                dateStr: doseDate.value,
-                rate: parseFloat(rateVal.toFixed(2))
-              });
-            }
+            const rateAnchor = rateVal > 0
+              ? { dateStr: doseDate.value, rate: parseFloat(rateVal.toFixed(2)) }
+              : existing.rateAnchor;
+
+            const modeObj = { days, capAnchor, rateAnchor };
+            cloudSettings.value = { ...cloudSettings.value, [key]: modeObj };
+            safeStorageSet(CLOUD_SETTINGS_CACHE_KEY, cloudSettings.value);
 
             settingsVersion.value++;
             showSettingsModal.value = false;
             if (stats.value && !isUserModified.value) applyDoseRecommendation(stats.value);
+
+            enqueueWrite({
+              action: 'saveSettings',
+              key,
+              payload: JSON.stringify(modeObj)
+            }, (res) => {
+              if (res && res.success && res.settings) {
+                cloudSettings.value = res.settings;
+                safeStorageSet(CLOUD_SETTINGS_CACHE_KEY, res.settings);
+                settingsVersion.value++;
+              }
+            });
           };
 
           /* --- STATISTICS MODAL --- */
@@ -2051,6 +2094,7 @@
           };
 
           onMounted(() => {
+            loadCloudSettings();
             loadStats();
             setInterval(() => {
               if (!isManualTimeSet.value && document.activeElement?.id !== 'time') {
@@ -2072,7 +2116,7 @@
 
           return {
             activeError, copyFeedback, copyErrorReport, dismissError,
-            sheetName, doseDate, wakeTime, time, amount, activeDayType,
+            sheetName, doseDate, wakeTime, time, amount, activeDayType, activeDayTypeLabel,
             stats, tableDoses, loading,
             currentCap, isAmountNegative, liveAwake, liveElapsed, preview,
             showSettingsModal, settingsForm,
