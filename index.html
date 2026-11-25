@@ -727,8 +727,8 @@
             <div v-if="selectedChartPoint" class="chart-tooltip">
               <span>{{ selectedChartPoint.date }}</span>{{ selectedChartPoint.label }}
             </div>
-            <div v-if="historyLoading && chartData.points.length === 0" class="chart-empty">Loading...</div>
-            <div v-else-if="chartData.points.length === 0" class="chart-empty">No data in this period.</div>
+            <div v-if="historyLoading && !chartData.hasAnyData" class="chart-empty">Loading...</div>
+            <div v-else-if="!chartData.hasAnyData" class="chart-empty">No data in this period.</div>
             <svg
               v-else
               viewBox="0 0 360 174"
@@ -755,10 +755,10 @@
 
               <text x="38" y="168" fill="#666" font-size="9" text-anchor="start">{{ chartData.firstDate }}</text>
               <text v-if="chartData.midDate" x="193" y="168" fill="#666" font-size="9" text-anchor="middle">{{ chartData.midDate }}</text>
-              <text v-if="chartData.points.length > 1" x="348" y="168" fill="#666" font-size="9" text-anchor="end">{{ chartData.lastDate }}</text>
+              <text x="348" y="168" fill="#666" font-size="9" text-anchor="end">{{ chartData.lastDate }}</text>
 
-              <polygon v-if="chartData.points.length > 1" :points="chartData.areaPoints" fill="url(#lineAreaGrad)" />
-              <polyline v-if="chartData.points.length > 1" :points="chartData.polyPoints" fill="none" stroke="#64b5f6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+              <polygon v-if="chartData.areaPoints" :points="chartData.areaPoints" fill="url(#lineAreaGrad)" />
+              <polyline v-if="chartData.polyPoints" :points="chartData.polyPoints" fill="none" stroke="#64b5f6" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
               <circle v-for="(pt, idx) in chartData.dots" :key="idx" :cx="pt.x" :cy="pt.y" r="2.8" fill="#64b5f6" />
 
               <line
@@ -772,7 +772,7 @@
                 stroke-dasharray="2,2"
               />
               <circle
-                v-if="selectedChartPoint"
+                v-if="selectedChartPoint && selectedChartPoint.hasData"
                 :cx="selectedChartPoint.x"
                 :cy="selectedChartPoint.y"
                 r="4.5"
@@ -1782,8 +1782,6 @@
                 const cnt = parsed.allDoses
                   ? parsed.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length
                   : (parseInt(parsed.totalDoses, 10) || 0);
-                if (dStr === todayStr && cnt < 6) continue;
-                if (dStr <= '2026-11-22' && tot < 13) continue;
                 if (!isNaN(tot) && tot > 0) {
                   const snap = getFullDaySnapshot(parsed, dStr);
                   results.push({
@@ -1855,9 +1853,6 @@
                     if (!item.date || item.date > todayStr) return false;
                     const tot = parseFloat(item.total);
                     if (isNaN(tot) || tot <= 0) return false;
-                    const cnt = parseInt(item.count, 10) || 0;
-                    if (item.date === todayStr && cnt < 6) return false;
-                    if (item.date <= '2026-11-22' && tot < 13) return false;
                     return true;
                   })
                   .map(item => ({
@@ -1890,28 +1885,57 @@
             const tStats = (doseDate.value === todayStr && stats.value && stats.value.found)
               ? stats.value
               : todayDayStats.value;
-            const tSnap = (tStats && getValidDoseCount(tStats) >= 6) ? getFullDaySnapshot(tStats, todayStr) : null;
+            const tCount = tStats ? getValidDoseCount(tStats) : 0;
+            const tSnap = tCount > 0 ? getFullDaySnapshot(tStats, todayStr) : null;
 
-            return fullHistoryPoints.value.map(p => {
-              if (p.date === todayStr && tSnap && tSnap.rate !== null) {
-                return { ...p, total: tSnap.total, rate: tSnap.rate };
-              }
-              return p;
-            });
+            const map = new Map();
+            for (const p of fullHistoryPoints.value) {
+              map.set(p.date, { ...p });
+            }
+
+            if (tSnap && tSnap.total > 0) {
+              const existing = map.get(todayStr) || { date: todayStr, count: tCount };
+              map.set(todayStr, {
+                ...existing,
+                date: todayStr,
+                total: tSnap.total,
+                rate: tSnap.rate !== null ? tSnap.rate : existing.rate,
+                count: tCount
+              });
+            }
+
+            return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
           });
 
-          const filteredChartPoints = computed(() => {
-            const cutoffStr = getDateStrOffset(activeStatsRange.value);
+          const chartRangeDays = computed(() => {
+            const totalDays = activeStatsRange.value;
             const isRate = activeStatsMetric.value === 'rate';
-            return normalizedHistoryPoints.value.filter(p => p.date >= cutoffStr && (isRate ? (p.rate !== null && p.rate > 0) : p.total > 0));
+            const byDate = new Map();
+            for (const p of normalizedHistoryPoints.value) {
+              byDate.set(p.date, p);
+            }
+
+            const days = [];
+            for (let offset = totalDays - 1; offset >= 0; offset--) {
+              const dStr = getDateStrOffset(offset);
+              const rec = byDate.get(dStr);
+              const val = rec ? (isRate ? rec.rate : rec.total) : null;
+              const hasData = val !== null && !isNaN(val) && val > 0;
+              days.push({
+                date: dStr,
+                val: hasData ? val : null,
+                hasData
+              });
+            }
+            return days;
           });
 
           const chartStats = computed(() => {
-            const pts = filteredChartPoints.value;
-            if (!pts.length) return { avg: '-', min: '-', max: '-' };
+            const validDays = chartRangeDays.value.filter(d => d.hasData);
+            if (!validDays.length) return { avg: '-', min: '-', max: '-' };
             const isRate = activeStatsMetric.value === 'rate';
             const unit = isRate ? 'g/h' : 'g';
-            const vals = pts.map(p => isRate ? p.rate : p.total);
+            const vals = validDays.map(d => d.val);
             const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
             return {
               avg: `${avg.toFixed(2)} ${unit}`,
@@ -1921,10 +1945,14 @@
           });
 
           const chartData = computed(() => {
-            const pts = filteredChartPoints.value;
-            if (!pts.length) return { points: [], coords: [], dots: [] };
+            const days = chartRangeDays.value;
+            const validDays = days.filter(d => d.hasData);
+            if (!validDays.length) {
+              return { hasAnyData: false, coords: [], dots: [], polyPoints: '', areaPoints: '' };
+            }
+
             const isRate = activeStatsMetric.value === 'rate';
-            const vals = pts.map(p => isRate ? p.rate : p.total);
+            const vals = validDays.map(d => d.val);
             const minVal = Math.min(...vals);
             const maxVal = Math.max(...vals);
             const padL = 38, padR = 12, padT = 14, padB = 24, W = 360, H = 174;
@@ -1942,33 +1970,38 @@
               yMax += m;
             }
 
-            const getX = i => pts.length === 1 ? padL + plotW / 2 : padL + (i / (pts.length - 1)) * plotW;
+            const getX = i => days.length === 1 ? padL + plotW / 2 : padL + (i / (days.length - 1)) * plotW;
             const getY = v => padT + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
 
-            const coords = pts.map((p, i) => ({
+            const coords = days.map((d, i) => ({
               x: getX(i).toFixed(1),
-              y: getY(vals[i]).toFixed(1),
+              y: d.hasData ? getY(d.val).toFixed(1) : null,
               numX: getX(i),
-              date: p.date.substring(5),
-              val: vals[i]
+              date: d.date.substring(5),
+              val: d.val,
+              hasData: d.hasData
             }));
-            const polyArr = coords.map(c => `${c.x},${c.y}`);
+
+            const validCoords = coords.filter(c => c.hasData);
+            const polyArr = validCoords.map(c => `${c.x},${c.y}`);
             const baseY = (padT + plotH).toFixed(1);
-            const areaArr = [...polyArr, `${coords[coords.length - 1].x},${baseY}`, `${coords[0].x},${baseY}`];
+            const areaArr = validCoords.length > 1
+              ? [...polyArr, `${validCoords[validCoords.length - 1].x},${baseY}`, `${validCoords[0].x},${baseY}`]
+              : [];
             const dec = isRate ? 2 : 1;
 
             return {
-              points: pts,
+              hasAnyData: true,
               coords,
-              polyPoints: polyArr.join(' '),
+              polyPoints: validCoords.length > 1 ? polyArr.join(' ') : '',
               areaPoints: areaArr.join(' '),
-              dots: pts.length <= 31 ? coords : [],
+              dots: days.length <= 31 ? validCoords : [],
               yMaxLabel: yMax.toFixed(dec),
               yMidLabel: ((yMin + yMax) / 2).toFixed(dec),
               yMinLabel: yMin.toFixed(dec),
-              firstDate: pts[0].date.substring(5),
-              midDate: pts.length > 2 ? pts[Math.floor(pts.length / 2)].date.substring(5) : '',
-              lastDate: pts[pts.length - 1].date.substring(5)
+              firstDate: days[0].date.substring(5),
+              midDate: days.length > 2 ? days[Math.floor(days.length / 2)].date.substring(5) : '',
+              lastDate: days[days.length - 1].date.substring(5)
             };
           });
 
@@ -1982,7 +2015,8 @@
               x: pt.x,
               y: pt.y,
               date: pt.date,
-              label: `${pt.val.toFixed(2)} ${unit}`
+              hasData: pt.hasData,
+              label: pt.hasData ? `${pt.val.toFixed(2)} ${unit}` : '-'
             };
           });
 
@@ -2055,7 +2089,7 @@
           const calcPeriod = (windowDays) => {
             const pts = normalizedHistoryPoints.value;
             const todayStr = getTodayDateStr();
-            const curEndOffset = pts.some(p => p.date === todayStr) ? 0 : 1;
+            const curEndOffset = pts.some(p => p.date === todayStr && p.count >= 6) ? 0 : 1;
             const curStart = getDateStrOffset(curEndOffset + windowDays - 1);
             const curEnd = getDateStrOffset(curEndOffset);
             const prevStart = getDateStrOffset(curEndOffset + windowDays * 2 - 1);
