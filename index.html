@@ -512,7 +512,7 @@
           <span class="error-code">[{{ activeError.code }}]</span>
           <div class="error-actions">
             <button type="button" class="error-btn" @click="copyErrorReport">{{ copyFeedback || 'Copy' }}</button>
-            <button type="button" class="error-btn" @click="dismissError">&times;</button>
+            <button type="button" class="error-btn" @click="dismissError">×</button>
           </div>
         </div>
         <div class="error-msg-text">{{ activeError.message }}</div>
@@ -670,8 +670,8 @@
       <div v-if="showSettingsModal" class="modal-overlay" @click.self="showSettingsModal = false">
         <div class="modal-box">
           <div class="modal-header">
-            <span class="modal-title">Settings &middot; {{ sheetName }} ({{ activeDayTypeLabel }})</span>
-            <button type="button" class="modal-close" @click="showSettingsModal = false">&times;</button>
+            <span class="modal-title">Settings · {{ sheetName }} ({{ activeDayTypeLabel }})</span>
+            <button type="button" class="modal-close" @click="showSettingsModal = false">×</button>
           </div>
 
           <div class="modal-section">
@@ -729,12 +729,12 @@
         <div class="modal-box modal-box-wide">
           <div class="modal-header">
             <span class="modal-title">Statistics</span>
-            <button type="button" class="modal-close" @click="showStatsModal = false">&times;</button>
+            <button type="button" class="modal-close" @click="showStatsModal = false">×</button>
           </div>
 
           <div class="range-tabs">
-            <button type="button" class="range-tab" :class="{ active: activeStatsMetric === 'total' }" @click="setStatsMetric('total')">Total (g)</button>
-            <button type="button" class="range-tab" :class="{ active: activeStatsMetric === 'rate' }" @click="setStatsMetric('rate')">Rate (g/h)</button>
+            <button type="button" class="range-tab" :class="{ active: activeStatsMetric === 'total' }" @click="setStatsMetric('total')">Gram</button>
+            <button type="button" class="range-tab" :class="{ active: activeStatsMetric === 'rate' }" @click="setStatsMetric('rate')">Rate</button>
           </div>
 
           <div class="range-tabs" style="margin-bottom: 12px;">
@@ -1846,12 +1846,11 @@
             return dayStats.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0).length;
           };
 
-          const isValidCompletedPrevDay = (dayStats, targetDateStr) => {
+          const isValidCompletedPrevDay = (dayStats) => {
             if (!dayStats || !dayStats.found) return false;
             const cnt = getValidDoseCount(dayStats);
             const tot = parseFloat(String(dayStats.dailyTotal || '0').replace(' g', '').replace(',', '.').trim()) || 0;
             if (cnt < 6 || tot <= 0) return false;
-            if (targetDateStr <= '2026-11-22' && tot < 13) return false;
             return true;
           };
 
@@ -1915,13 +1914,13 @@
 
           const fetchPrevDayForComparison = (targetDateStr, onDone) => {
             const cached = safeStorageGet(`taper_fast_cache_v24_${sheetName.value}_${targetDateStr}`, true);
-            if (isValidCompletedPrevDay(cached, targetDateStr)) {
+            if (isValidCompletedPrevDay(cached)) {
               prevDayStats.value = { ...cached, dateStr: targetDateStr };
             }
             callApi({ action: 'getStats', sheetName: sheetName.value, dateStr: targetDateStr }, (data) => {
               if (data && data.found) {
                 saveToLocalCache(sheetName.value, targetDateStr, data);
-                if (isValidCompletedPrevDay(data, targetDateStr)) {
+                if (isValidCompletedPrevDay(data)) {
                   prevDayStats.value = { ...data, dateStr: targetDateStr };
                 }
               }
