@@ -512,7 +512,7 @@
           <span class="error-code">[{{ activeError.code }}]</span>
           <div class="error-actions">
             <button type="button" class="error-btn" @click="copyErrorReport">{{ copyFeedback || 'Copy' }}</button>
-            <button type="button" class="error-btn" @click="dismissError">×</button>
+            <button type="button" class="error-btn" @click="dismissError">&times;</button>
           </div>
         </div>
         <div class="error-msg-text">{{ activeError.message }}</div>
@@ -641,7 +641,8 @@
                   placeholder="00:00"
                   :value="item.time"
                   @input="onTableTimeInput($event, item)"
-                  @keydown.enter.prevent="$event.target.blur()"
+                  @beforeinput="handleTableTimeBeforeInput($event, item)"
+                  @keydown="handleTableTimeKeydown($event, item)"
                   @blur="onTableTimeBlur(item)"
                 >
               </td>
@@ -655,6 +656,7 @@
                   placeholder="0.00"
                   :value="item.amount"
                   @input="onTableAmountInput($event, item)"
+                  @beforeinput="handleTableAmountBeforeInput($event, item)"
                   @keydown="handleTableAmountKeydown($event, item)"
                   @blur="onTableAmountBlur(item)"
                 >
@@ -668,8 +670,8 @@
       <div v-if="showSettingsModal" class="modal-overlay" @click.self="showSettingsModal = false">
         <div class="modal-box">
           <div class="modal-header">
-            <span class="modal-title">Settings · {{ sheetName }} ({{ activeDayTypeLabel }})</span>
-            <button type="button" class="modal-close" @click="showSettingsModal = false">×</button>
+            <span class="modal-title">Settings &middot; {{ sheetName }} ({{ activeDayTypeLabel }})</span>
+            <button type="button" class="modal-close" @click="showSettingsModal = false">&times;</button>
           </div>
 
           <div class="modal-section">
@@ -727,7 +729,7 @@
         <div class="modal-box modal-box-wide">
           <div class="modal-header">
             <span class="modal-title">Statistics</span>
-            <button type="button" class="modal-close" @click="showStatsModal = false">×</button>
+            <button type="button" class="modal-close" @click="showStatsModal = false">&times;</button>
           </div>
 
           <div class="range-tabs">
@@ -1635,6 +1637,24 @@
             });
           };
 
+          const clearTableAmountAndJump = (item) => {
+            item.amount = '';
+            const tEl = document.getElementById('t_time_' + item.doseNumber);
+            if (tEl) tEl.focus();
+          };
+
+          const clearTableTimeAndJump = (item, currentEl) => {
+            item.time = '';
+            if (item.doseNumber > 1) {
+              const prevAmtEl = document.getElementById('t_amount_' + (item.doseNumber - 1));
+              if (prevAmtEl) {
+                prevAmtEl.focus();
+                return;
+              }
+            }
+            if (currentEl) currentEl.blur();
+          };
+
           const onTableTimeInput = (e, item) => {
             const digits = buildSmartTimeDigits(e.target.value);
             item.time = digits.length >= 3 ? `${digits.substring(0, 2)}:${digits.substring(2, 4)}` : digits;
@@ -1642,6 +1662,25 @@
             if (digits.length >= 4) {
               const aEl = document.getElementById('t_amount_' + item.doseNumber);
               if (aEl) setTimeout(() => { aEl.focus(); aEl.select(); }, 30);
+            }
+          };
+
+          const handleTableTimeBeforeInput = (e, item) => {
+            if (e.inputType === 'deleteContentBackward' || e.inputType === 'deleteContentForward') {
+              e.preventDefault();
+              clearTableTimeAndJump(item, e.target);
+            }
+          };
+
+          const handleTableTimeKeydown = (e, item) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              e.target.blur();
+              return;
+            }
+            if (e.key === 'Backspace' || e.key === 'Delete') {
+              e.preventDefault();
+              clearTableTimeAndJump(item, e.target);
             }
           };
 
@@ -1659,6 +1698,13 @@
             e.target.value = item.amount;
           };
 
+          const handleTableAmountBeforeInput = (e, item) => {
+            if (e.inputType === 'deleteContentBackward' || e.inputType === 'deleteContentForward') {
+              e.preventDefault();
+              clearTableAmountAndJump(item);
+            }
+          };
+
           const onTableAmountBlur = (item) => {
             setTimeout(() => {
               const activeId = document.activeElement ? document.activeElement.id : '';
@@ -1674,12 +1720,8 @@
               return;
             }
             if (e.key === 'Backspace' || e.key === 'Delete') {
-              if (item.amount.trim() === '' && item.time.trim() !== '') {
-                e.preventDefault();
-                item.time = '';
-                const tEl = document.getElementById('t_time_' + item.doseNumber);
-                if (tEl) tEl.focus();
-              }
+              e.preventDefault();
+              clearTableAmountAndJump(item);
             }
           };
 
@@ -2260,7 +2302,8 @@
             loadStats, onDateChange, onProfileChange, setDayType,
             onWakeInput, onWakeBlur, onManualTimeInput, onTimeBlur,
             onAmountInput, handleDoseContainerClick, handleAmountBlur, autoSubmit,
-            onTableTimeInput, onTableTimeBlur, onTableAmountInput, onTableAmountBlur, handleTableAmountKeydown,
+            onTableTimeInput, onTableTimeBlur, handleTableTimeBeforeInput, handleTableTimeKeydown,
+            onTableAmountInput, onTableAmountBlur, handleTableAmountBeforeInput, handleTableAmountKeydown,
             openSettingsModal, saveSettingsModal, openStatsModal
           };
         }
