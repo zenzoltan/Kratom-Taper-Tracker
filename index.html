@@ -527,7 +527,7 @@
         </div>
         <div class="form-group">
           <label for="doseDate">Date</label>
-          <input type="date" id="doseDate" v-model="doseDate" @change="loadStats" required>
+          <input type="date" id="doseDate" v-model="doseDate" @change="onDateChange" required>
         </div>
         <div class="form-group" style="flex: 0 0 58px;">
           <label for="wakeTime">Wake</label>
@@ -597,9 +597,9 @@
           @blur="handleAmountBlur"
         >
         <div v-if="preview.visible" class="preview-box">
-          <div class="preview-grid">
-            <div>Total: <span class="preview-item">{{ preview.total }}</span></div>
-            <div>Diff: <span class="preview-item">{{ preview.diff }}</span></div>
+          <div class="preview-grid" :style="preview.pastOnly ? { justifyContent: 'center' } : {}">
+            <div v-if="!preview.pastOnly">Total: <span class="preview-item">{{ preview.total }}</span></div>
+            <div v-if="!preview.pastOnly">Diff: <span class="preview-item">{{ preview.diff }}</span></div>
             <div>Rate: <span class="preview-item" :style="{ color: preview.rateColor }">{{ preview.rateText }}</span></div>
           </div>
         </div>
@@ -1152,6 +1152,11 @@
           const dailyCompareLoading = ref(false);
           const selectedChartIdx = ref(null);
 
+          const isPastDate = computed(() => {
+            nowTick.value;
+            return doseDate.value < getTodayDateStr();
+          });
+
           const activeDayTypeLabel = computed(() => {
             if (activeDayType.value === 'Szabadnap') return 'Off';
             if (activeDayType.value === 'Munkanap') return 'Work';
@@ -1270,7 +1275,7 @@
           const currentCap = computed(() => getDoseCap(doseDate.value, sheetName.value, activeDayType.value));
           const currentRecRate = computed(() => getRecommendationRate(doseDate.value, sheetName.value, activeDayType.value));
           const currentBufferHours = computed(() => getBufferHoursForDay(sheetName.value, activeDayType.value));
-          const isAmountNegative = computed(() => String(amount.value || '').trim().startsWith('-'));
+          const isAmountNegative = computed(() => !isPastDate.value && String(amount.value || '').trim().startsWith('-'));
 
           const getBaseWakeTime = (data) => {
             const w = (wakeTime.value || (data && data.wakeTime) || '').trim();
@@ -1324,11 +1329,22 @@
 
           const preview = computed(() => {
             nowTick.value;
+            if (isPastDate.value) {
+              return {
+                visible: true,
+                pastOnly: true,
+                total: '',
+                diff: '',
+                rateText: `${currentRecRate.value.toFixed(2)} g/h`,
+                rateColor: '#a5d6a7'
+              };
+            }
+
             const raw = String(amount.value || '').replace(',', '.');
             const amtVal = getParsedAmount(raw);
             const isNeg = raw.trim().startsWith('-');
             if ((amtVal <= 0 && !isNeg) || !stats.value) {
-              return { visible: false, total: '-', diff: '-', rateText: '-', rateColor: '#888' };
+              return { visible: false, pastOnly: false, total: '-', diff: '-', rateText: '-', rateColor: '#888' };
             }
 
             const validDoses = (stats.value.allDoses || []).filter(d => d.hasData && getParsedAmount(d.amount) > 0);
@@ -1350,13 +1366,14 @@
             const recRate = currentRecRate.value;
 
             if (!effH || effH <= 0) {
-              return { visible: true, total: newTotal, diff: diffText, rateText: '-', rateColor: '#888' };
+              return { visible: true, pastOnly: false, total: newTotal, diff: diffText, rateText: '-', rateColor: '#888' };
             }
 
             const resultingRate = newTotalVal / effH;
             const col = (resultingRate <= recRate + 0.005) ? '#81c784' : '#ef5350';
             return {
               visible: true,
+              pastOnly: false,
               total: newTotal,
               diff: diffText,
               rateText: `${resultingRate.toFixed(2)} g/h`,
@@ -1370,6 +1387,10 @@
           };
 
           const applyDoseRecommendation = (data) => {
+            if (isPastDate.value) {
+              amount.value = '0.00';
+              return;
+            }
             if (!data || !data.found || isUserModified.value) return;
             const validDoses = (data.allDoses || []).filter(d => d.hasData && getParsedAmount(d.amount) > 0 && d.time);
             const cap = currentCap.value;
@@ -1429,6 +1450,9 @@
             if (sheetName.value === 'Zoli') {
               activeDayType.value = resolveZoliDayType(doseDate.value, null);
             }
+            if (isPastDate.value) {
+              amount.value = '0.00';
+            }
             const cacheKey = `taper_fast_cache_v24_${sheetName.value}_${doseDate.value}`;
             let hasCache = false;
             const cached = safeStorageGet(cacheKey, true);
@@ -1446,6 +1470,7 @@
               loading.value = false;
               if (!data || !data.found) {
                 if (!hasCache) stats.value = { found: false };
+                if (isPastDate.value) amount.value = '0.00';
                 return;
               }
               saveToLocalCache(sheetName.value, doseDate.value, data);
@@ -1455,13 +1480,20 @@
             });
           };
 
+          const onDateChange = () => {
+            isUserModified.value = false;
+            isManualTimeSet.value = false;
+            amount.value = isPastDate.value ? '0.00' : '';
+            loadStats();
+          };
+
           const onProfileChange = () => {
             safeStorageSet('taper_active_profile', sheetName.value);
             activeDayType.value = sheetName.value === 'Zoli' ? resolveZoliDayType(doseDate.value, null) : 'Szabadnap';
             stats.value = null;
             isUserModified.value = false;
             isManualTimeSet.value = false;
-            amount.value = '';
+            amount.value = isPastDate.value ? '0.00' : '';
             loadStats();
           };
 
@@ -1521,17 +1553,19 @@
           };
 
           const handleDoseContainerClick = () => {
+            if (isPastDate.value) return;
             if (getParsedAmount(amount.value) > 0 && !isSaving.value) autoSubmit();
           };
 
           const handleAmountBlur = () => {
             setTimeout(() => {
+              if (isPastDate.value) return;
               if (getParsedAmount(amount.value) > 0 && !isSaving.value && isUserModified.value) autoSubmit();
             }, 150);
           };
 
           const autoSubmit = () => {
-            if (isSaving.value) return;
+            if (isSaving.value || isPastDate.value) return;
             const rawVal = String(amount.value || '').replace(',', '.').trim();
             if (rawVal.startsWith('-')) return;
             const amountVal = getParsedAmount(rawVal);
@@ -2221,7 +2255,7 @@
             selectedChartIdx, selectedChartPoint, onChartPointer, setStatsMetric, setStatsRange,
             chartStats, chartData, comparisons,
             formatAmountStr, cleanDisplay,
-            loadStats, onProfileChange, setDayType,
+            loadStats, onDateChange, onProfileChange, setDayType,
             onWakeInput, onWakeBlur, onManualTimeInput, onTimeBlur,
             onAmountInput, handleDoseContainerClick, handleAmountBlur, autoSubmit,
             onTableTimeInput, onTableTimeBlur, onTableAmountInput, onTableAmountBlur, handleTableAmountKeydown,
