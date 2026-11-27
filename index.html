@@ -91,6 +91,16 @@
         flex: 1;
         min-width: 0;
       }
+      .fg-profile {
+        flex: 0.85 1 0;
+      }
+      .fg-date {
+        flex: 1.55 1 0;
+      }
+      .fg-wake,
+      .fg-time {
+        flex: 1 1 0;
+      }
       .settings-btn {
         background: #1c1c1c;
         color: #888;
@@ -129,6 +139,36 @@
         border-radius: 8px;
         font-size: 13px;
         box-sizing: border-box;
+      }
+      select {
+        -webkit-appearance: none;
+        appearance: none;
+        text-align: center;
+        text-align-last: center;
+        padding: 0 4px;
+      }
+      input[type="date"] {
+        position: relative;
+        -webkit-appearance: none;
+        appearance: none;
+        text-align: center;
+        padding: 0 4px;
+      }
+      input[type="date"]::-webkit-date-and-time-value {
+        text-align: center;
+      }
+      input[type="date"]::-webkit-calendar-picker-indicator {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        cursor: pointer;
+      }
+      input[type="date"]::-webkit-inner-spin-button,
+      input[type="date"]::-webkit-clear-button {
+        display: none;
+        -webkit-appearance: none;
       }
       input:focus, select:focus {
         outline: none;
@@ -520,18 +560,18 @@
 
       <!-- Top Row -->
       <div class="top-row">
-        <div class="form-group" style="flex: 0 0 62px;">
+        <div class="form-group fg-profile">
           <label for="sheetName">Profile</label>
           <select id="sheetName" v-model="sheetName" @change="onProfileChange">
             <option value="Kori">Kori</option>
             <option value="Zoli">Zoli</option>
           </select>
         </div>
-        <div class="form-group">
+        <div class="form-group fg-date">
           <label for="doseDate">Date</label>
           <input type="date" id="doseDate" v-model="doseDate" @change="onDateChange" required>
         </div>
-        <div class="form-group" style="flex: 0 0 58px;">
+        <div class="form-group fg-wake">
           <label for="wakeTime">Wake</label>
           <input
             type="text"
@@ -547,7 +587,7 @@
             @blur="onWakeBlur"
           >
         </div>
-        <div class="form-group" style="flex: 0 0 58px;">
+        <div class="form-group fg-time">
           <label for="time">Time</label>
           <input
             type="text"
