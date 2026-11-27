@@ -1363,6 +1363,19 @@
             const wVal = (wakeTime.value || (stats.value && stats.value.wakeTime) || '').trim();
             const wakeM = parseTimeToMinutes(wVal);
             if (wakeM === null) return '-';
+
+            if (isPastDate.value) {
+              const valid = (stats.value && Array.isArray(stats.value.allDoses))
+                ? stats.value.allDoses.filter(d => d.hasData && getParsedAmount(d.amount) > 0 && d.time)
+                : [];
+              if (valid.length === 0) return '-';
+              const lastM = parseTimeToMinutes(valid[valid.length - 1].time);
+              if (lastM === null) return '-';
+              let diffMin = lastM - wakeM;
+              if (diffMin < 0) diffMin += 1440;
+              return `${String(Math.floor(diffMin / 60)).padStart(2, '0')}:${String(diffMin % 60).padStart(2, '0')}`;
+            }
+
             const now = new Date();
             let diffMin = (now.getHours() * 60 + now.getMinutes()) - wakeM;
             if (diffMin < 0) diffMin += 1440;
