@@ -589,6 +589,7 @@
         <div v-if="loading && !stats" class="loading">Loading...</div>
         <div v-else-if="!stats || !stats.found" style="color: #666; font-size: 12px; text-align: center; padding: 8px;">No entries for this day.</div>
         <template v-else>
+          <div class="stat-row"><span class="stat-label">Rate</span><span class="stat-value">{{ actualDayRate }}</span></div>
           <div class="stat-row"><span class="stat-label">Elapsed</span><span class="stat-value">{{ liveElapsed }}</span></div>
           <div class="stat-row"><span class="stat-label">Awake</span><span class="stat-value">{{ liveAwake }}</span></div>
           <div class="stat-row"><span class="stat-label">Max</span><span class="stat-value">{{ currentCap.toFixed(2) }} g</span></div>
@@ -815,7 +816,7 @@
 
     <script>
       const { createApp, ref, reactive, computed, onMounted } = Vue;
-      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxFacwEaDM2cz5HU8PfuHF62plBobApC2exEN7hKyi_QtKi6-E8z5JTWl_MmfETGAI/exec";
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwLunA0503U9F0PElqt4IXJ7e2OFIFURAZVApI8IUuVafVlDA65Ijk6zxcRORWC8X0/exec";
       const API_TIMEOUT_MS = 12000;
       const VIRTUAL_BUFFER_HOURS = 3;
       const CLOUD_SETTINGS_CACHE_KEY = 'taper_cloud_settings_v1';
@@ -1114,6 +1115,7 @@
           const isManualTimeSet = ref(false);
           const nowTick = ref(Date.now());
           const settingsVersion = ref(0);
+          const historyCacheVersion = ref(0);
           const cloudSettings = ref(safeStorageGet(CLOUD_SETTINGS_CACHE_KEY, true) || {});
 
           const showSettingsModal = ref(false);
@@ -1259,6 +1261,19 @@
             return null;
           };
 
+          const actualDayRate = computed(() => {
+            if (!stats.value || !stats.value.found) return '-';
+            const valid = (stats.value.allDoses || []).filter(d => d.hasData && getParsedAmount(d.amount) > 0 && d.time);
+            if (valid.length === 0) return '-';
+            const total = valid.reduce((s, d) => s + getParsedAmount(d.amount), 0);
+            const baseWake = getBaseWakeTime(stats.value);
+            const bufH = currentBufferHours.value;
+            const lastTime = valid[valid.length - 1].time;
+            const effH = baseWake ? getEffectiveHours(baseWake, lastTime, bufH) : bufH;
+            if (!effH || effH <= 0) return '-';
+            return `${(total / effH).toFixed(2)} g/h`;
+          });
+
           const liveAwake = computed(() => {
             nowTick.value;
             const wVal = (wakeTime.value || (stats.value && stats.value.wakeTime) || '').trim();
@@ -1330,6 +1345,7 @@
 
           const saveToLocalCache = (sName, dStr, data) => {
             safeStorageSet(`taper_fast_cache_v24_${sName}_${dStr}`, data);
+            historyCacheVersion.value++;
           };
 
           const applyDoseRecommendation = (data) => {
@@ -1816,6 +1832,21 @@
             });
           };
 
+          const backfillMissingRates = (historyItems) => {
+            const cutoff7 = getDateStrOffset(7);
+            const missing = historyItems.filter(p => p.date >= cutoff7 && p.total > 0 && (p.rate === null || p.rate <= 0));
+            for (const item of missing) {
+              const cached = safeStorageGet(`taper_fast_cache_v24_${sheetName.value}_${item.date}`, true);
+              const cachedSnap = cached && cached.found ? getFullDaySnapshot(cached, item.date) : null;
+              if (cachedSnap && cachedSnap.rate) continue;
+              callApi({ action: 'getStats', sheetName: sheetName.value, dateStr: item.date }, (data) => {
+                if (data && data.found) {
+                  saveToLocalCache(sheetName.value, item.date, data);
+                }
+              });
+            }
+          };
+
           const openStatsModal = () => {
             showSettingsModal.value = false;
             showStatsModal.value = true;
@@ -1865,6 +1896,7 @@
 
                 if (filtered.length > 0) {
                   fullHistoryPoints.value = filtered;
+                  backfillMissingRates(filtered);
                   if (!prevDayStats.value) {
                     const prevDays = filtered.filter(p => p.date < todayStr && p.count >= 6);
                     const fallbackDay = prevDays.length > 0 ? prevDays[prevDays.length - 1] : filtered.filter(p => p.date < todayStr).pop();
@@ -1881,6 +1913,7 @@
           };
 
           const normalizedHistoryPoints = computed(() => {
+            historyCacheVersion.value;
             const todayStr = getTodayDateStr();
             const tStats = (doseDate.value === todayStr && stats.value && stats.value.found)
               ? stats.value
@@ -1890,7 +1923,16 @@
 
             const map = new Map();
             for (const p of fullHistoryPoints.value) {
-              map.set(p.date, { ...p });
+              let rateVal = p.rate;
+              let totalVal = p.total;
+              const cached = safeStorageGet(`taper_fast_cache_v24_${sheetName.value}_${p.date}`, true);
+              if (cached && cached.found) {
+                const snap = getFullDaySnapshot(cached, p.date);
+                if (snap && snap.rate && snap.rate > 0) {
+                  rateVal = snap.rate;
+                }
+              }
+              map.set(p.date, { ...p, total: totalVal, rate: rateVal });
             }
 
             if (tSnap && tSnap.total > 0) {
@@ -2152,7 +2194,7 @@
             activeError, copyFeedback, copyErrorReport, dismissError,
             sheetName, doseDate, wakeTime, time, amount, activeDayType, activeDayTypeLabel,
             stats, tableDoses, loading,
-            currentCap, isAmountNegative, liveAwake, liveElapsed, preview,
+            currentCap, actualDayRate, isAmountNegative, liveAwake, liveElapsed, preview,
             showSettingsModal, settingsForm,
             showStatsModal, activeStatsMetric, activeStatsRange, historyLoading, dailyCompareLoading,
             selectedChartIdx, selectedChartPoint, onChartPointer, setStatsMetric, setStatsRange,
